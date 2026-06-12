@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多智能体平台 - Multi-Agent Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- 登录/注册页 -->
+    <div id="auth-page" class="page active">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="logo-icon">🤖</div>
+                    <h1>多智能体平台</h1>
+                    <p>Multi-Agent Platform</p>
+                </div>
+                <div class="auth-tabs">
+                    <button class="tab-btn active" data-tab="login">登录</button>
+                    <button class="tab-btn" data-tab="register">注册</button>
+                </div>
+                <form id="login-form" class="auth-form active">
+                    <div class="input-group">
+                        <input type="text" id="login-user" placeholder="用户名" required>
+                    </div>
+                    <div class="input-group">
+                        <input type="password" id="login-pass" placeholder="密码" required>
+                    </div>
+                    <button type="submit" class="btn-primary btn-full">登 录</button>
+                </form>
+                <form id="register-form" class="auth-form">
+                    <div class="input-group">
+                        <input type="text" id="reg-user" placeholder="用户名" required>
+                    </div>
+                    <div class="input-group">
+                        <input type="password" id="reg-pass" placeholder="密码" required>
+                    </div>
+                    <button type="submit" class="btn-primary btn-full">注 册</button>
+                </form>
+                <div class="auth-footer">
+                    <span>访客模式可直接使用</span>
+                    <button id="guest-btn" class="btn-text">进入体验 →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="main-page" class="page">
+        <header class="topbar">
+            <button class="sidebar-toggle" id="sidebar-toggle">☰</button>
+            <div class="topbar-brand">
+                <span class="brand-icon">🤖</span>
+                <span class="brand-text">Multi-Agent Platform</span>
+            </div>
+            <div class="topbar-right">
+                <div class="rate-indicator" id="rate-indicator" title="API 限流状态">
+                    <span class="rate-dot"></span>
+                    <span class="rate-text">限流</span>
+                </div>
+                <div class="user-info">
+                    <span id="current-user">未登录</span>
+                    <button id="logout-btn" class="btn-text">退出</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="layout">
+            <!-- 左侧会话列表 -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <span>会话列表</span>
+                    <button id="new-chat-btn" class="btn-icon" title="新建会话">＋</button>
+                </div>
+                <div class="conversation-list" id="conversation-list">
+                    <div class="conv-item active" data-sid="default">
+                        <span class="conv-title">默认会话</span>
+                    </div>
+                </div>
+                <div class="sidebar-footer">
+                    <button id="clear-chat-btn" class="btn-text">清空当前会话</button>
+                </div>
+            </aside>
+
+            <!-- 中间聊天区 -->
+            <main class="chat-area">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="welcome-card">
+                        <div class="welcome-icon">🤖</div>
+                        <h2>欢迎使用多智能体平台</h2>
+                        <p>基于 LangGraph + DeepSeek 构建，支持意图识别、多轮对话、流式输出</p>
+                        <div class="quick-actions">
+                            <button class="quick-btn" data-msg="帮我写一段小红书文案">📝 写文案</button>
+                            <button class="quick-btn" data-msg="分析一下今天的热点话题">🔥 热点分析</button>
+                            <button class="quick-btn" data-msg="帮我生成一张图片的提示词">🎨 生成提示词</button>
+                            <button class="quick-btn" data-msg="我想了解这个平台的功能">ℹ️ 平台介绍</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <div class="chat-input-wrapper">
+                        <textarea id="chat-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行" maxlength="4096"></textarea>
+                        <button id="send-btn" class="btn-send" title="发送">➤</button>
+                    </div>
+                    <div class="chat-input-hint">
+                        <span id="char-count">0 / 4096</span>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 右侧限流面板 -->
+            <aside class="right-panel" id="right-panel">
+                <div class="panel-section">
+                    <h3>⚡ 限流状态</h3>
+                    <div id="rate-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">全局速率</span>
+                            <span class="stat-value" id="stat-global">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">用户速率</span>
+                            <span class="stat-value" id="stat-user">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">API 熔断</span>
+                            <span class="stat-value" id="stat-pool">--</span>
+                        </div>
+                        <button id="refresh-rate-btn" class="btn-text">刷新</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <h3>🔧 MCP 工具</h3>
+                    <div id="mcp-tools">
+                        <span class="stat-value" style="color:var(--text-secondary)">加载中...</span>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <h3>📊 会话信息</h3>
+                    <div id="session-info">
+                        <div class="stat-item">
+                            <span class="stat-label">会话ID</span>
+                            <span class="stat-value mono" id="stat-sid">default</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">消息数</span>
+                            <span class="stat-value" id="stat-msg-count">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">最后意图</span>
+                            <span class="stat-value" id="stat-intent">--</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

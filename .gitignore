@@ -1,0 +1,7 @@
+.env
+agent.db
+app.log
+__pycache__/
+*.pyc
+.venv/
+venv/
