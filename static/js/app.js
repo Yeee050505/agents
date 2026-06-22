@@ -116,6 +116,22 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function renderMessageStream(role, content) {
+    const container = document.getElementById('chat-messages');
+    const welcome = container.querySelector('.welcome-card');
+    if (welcome) welcome.remove();
+
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    div.innerHTML = `<div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>`;
+    div.appendChild(bubble);
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return { el: div, bubble };
+}
+
 async function sendMessage() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
@@ -130,30 +146,69 @@ async function sendMessage() {
     if (!sessions[currentSessionId]) sessions[currentSessionId] = [];
     sessions[currentSessionId].push({ role: 'user', content: msg });
 
-    showTyping();
+    const { bubble } = renderMessageStream('assistant', '');
     updateSessionInfo();
 
     try {
-        const data = await api('/chat', {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const resp = await fetch(API + '/chat/stream', {
             method: 'POST',
+            headers,
             body: JSON.stringify({
                 message: msg,
                 user_id: userId || null,
                 session_id: currentSessionId,
             }),
         });
-        removeTyping();
-        if (data.code === 200) {
-            const answer = data.data.answer || '（无回复）';
-            renderMessage('assistant', answer);
-            sessions[currentSessionId].push({ role: 'assistant', content: answer });
-            document.getElementById('stat-intent').textContent = data.data.intent || '--';
-        } else {
-            renderMessage('assistant', '错误: ' + (data.msg || '未知'));
+
+        if (!resp.ok) {
+            bubble.textContent = '请求失败 (' + resp.status + ')';
+            sendBtn.disabled = false;
+            input.focus();
+            return;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let fullAnswer = '';
+        let intent = '--';
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.token) {
+                            fullAnswer += parsed.token;
+                            bubble.textContent = fullAnswer;
+                            const container = document.getElementById('chat-messages');
+                            container.scrollTop = container.scrollHeight;
+                        } else if (parsed.intent) {
+                            intent = parsed.intent;
+                        }
+                    } catch {}
+                }
+            }
+        }
+
+        document.getElementById('stat-intent').textContent = intent;
+        if (fullAnswer) {
+            sessions[currentSessionId].push({ role: 'assistant', content: fullAnswer });
         }
     } catch {
-        removeTyping();
-        renderMessage('assistant', '请求失败，请检查服务状态');
+        bubble.textContent = '请求失败，请检查服务状态';
     }
 
     sendBtn.disabled = false;
@@ -289,6 +344,32 @@ async function loadMCPTools() {
     } catch {}
 }
 
+// ===== 知识库 =====
+function renderKBList() {
+    api('/kb/documents').then(data => {
+        const list = document.getElementById('kb-list');
+        if (data.code === 200 && data.data.length > 0) {
+            list.innerHTML = data.data.map(d =>
+                `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(d.file_name)}</span>
+                    <span style="font-size:11px;color:var(--text-secondary);margin:0 4px">${d.chunks}块</span>
+                    <button class="kb-del" data-id="${d.doc_id}" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:12px;padding:0">✕</button>
+                </div>`
+            ).join('');
+            list.querySelectorAll('.kb-del').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('确定删除此文档？')) return;
+                    const res = await api('/kb/documents/' + btn.dataset.id, { method: 'DELETE' });
+                    if (res.code === 200) renderKBList();
+                    else toast(res.msg || '删除失败', 'error');
+                });
+            });
+        } else {
+            list.textContent = '暂无文档';
+        }
+    }).catch(() => {});
+}
+
 // ===== Quick Actions =====
 function bindQuickActions() {
     document.querySelectorAll('.quick-btn').forEach(btn => {
@@ -345,6 +426,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // Rate limit
     document.getElementById('refresh-rate-btn').addEventListener('click', loadRateStats);
     setInterval(loadRateStats, 30000);
+
+    // Knowledge base
+    document.getElementById('kb-upload-btn').addEventListener('click', () => {
+        document.getElementById('kb-file-input').click();
+    });
+    document.getElementById('kb-file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        try {
+            const res = await fetch(API + '/kb/upload', { method: 'POST', headers, body: formData });
+            const data = await res.json();
+            if (data.code === 200) toast(`文档「${file.name}」已导入`);
+            else toast(data.msg || '导入失败', 'error');
+            renderKBList();
+        } catch { toast('上传失败', 'error'); }
+        e.target.value = '';
+    });
+    document.getElementById('kb-refresh-btn').addEventListener('click', renderKBList);
+    renderKBList();
 
     // MCP tools
     loadMCPTools();

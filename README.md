@@ -1,27 +1,67 @@
-# 多智能体协作集成（MACE）
+# 多智能体协作平台
 
 ## 技术栈
 
-FastAPI、SQLAlchemy、SQLite、LangChain、DeepSeek、PyJWT、Redis、BeautifulSoup4、HTML5、CSS3、JavaScript、Docker、Git
+FastAPI · LangChain · LangGraph · DeepSeek · Qwen2.5-3B+LoRA · BGE · Redis · SQLite · Docker · React+Vite+TypeScript+TailwindCSS
 
 ## 项目描述
 
-1. **多 Agent 协作编排**：自研 AgentGraph 图式调度引擎，构建 3 类 Worker Agent（代码/知识/闲聊）+ 1 个意图路由器 + 1 个 Supervisor 质检节点的多智能体协作体系。实现 intent 路由 → 子 Agent 执行 → Supervisor 审查 → 纠错重试的闭环决策回路，闲聊场景直出跳过审查。
+单一大模型在实时问答中存在延迟高、知识过时、无会话记忆、单点故障等问题。本项目基于 **五层解耦架构**（L1 LLM + L2 RAG + L3 MCP + L4 ReAct + L5 React）搭建了一个具备多 Agent 协作、ReAct 决策循环、MCP 工具总线、私有知识库、联网搜索增强、LoRA 本地推理、流式输出、高可用 LLM 调用的智能问答平台。
 
-2. **LLM 高可用密钥池**：设计三态断路器（CLOSED → OPEN → HALF_OPEN），基于指数退避算法（10s→120s）自动熔断与恢复；支持多 API Key 池化负载，单 Key 故障零秒切换。Redis Lua 脚本实现分布式令牌桶限流，内存 Token Bucket 降级兜底。
+1. **五层解耦架构**：L1 LLM 基座（DeepSeek API 3 Key 池+断路器 / Qwen2.5-3B LoRA）→ L2 RAG 知识库（BGE small + BM25 混合检索）→ L3 MCP 工具总线（统一注册/调用/日志）→ L4 ReAct 决策循环（Thought→Action→Observation→Final Answer）→ L5 React SPA 前端。
 
-3. **联网搜索与知识时效补足**：集成 Bing + 百度双搜索引擎降级链路，自动检测用户消息中 16 个关键词触发联网搜索；内置 14 个过时响应标记检测，大模型回复显示知识过时时自动搜后重试。
+2. **LangGraph 多 Agent 编排**：基于 LangGraph StateGraph 构建 7 节点（intent / code / knowledge / chat / tool / data / lora）+ supervisor 质检 + merger 合并的图式调度引擎，支持并行扇出（Send()）和 supervisor 重分类。
 
-4. **会话级上下文记忆**：基于 session_id 实现会话历史隔离持久化，Redis 优先 + 内存降级双模存储，1 小时 TTL 自动过期，最多保留 20 轮对话上下文。Agent 执行前加载历史、执行后自动保存。
+3. **ReAct + MCP 协同决策**：共享 `_run_react_loop()` 函数实现 ReAct 循环，所有外部数据访问强制通过 MCP 工具总线（`rag_search` / `web_search` / `rate_stats` / `session_info`），各节点禁止直连 RAG/搜索。
 
-5. **安全与权限体系**：基于 PyJWT 实现 Token 鉴权与过期检测，SHA-256 密码哈希加密；内置 Token 黑名单机制、全局 + 用户级双层分布式限流，jieba 敏感词过滤。
+4. **LLM 高可用密钥池**：3 把 DeepSeek Key 池化轮询 + 三态断路器（CLOSED→OPEN→HALF_OPEN）+ 指数退避（10s→120s），`_call_llm` 主实例失败遍历剩余健康实例，全部熔断友好降级。
 
-6. **前端交互开发**：采用原生 HTML+CSS+JS 开发全栈前端，实现登录注册、多会话管理、实时聊天、限流熔断状态看板等完整交互功能。AJAX 异步对接后端 8 个 RESTful 接口，零第三方前端框架依赖。
+5. **LoRA 本地推理**：Qwen2.5-3B + LoRA 适配器（世界杯助手，34 Q&A 10 epoch），RTX 4060 8GB 运行，体育/世界杯关键词自动路由到本地 GPU，降低 API 成本，低质量回答自动降级 ReAct-MCP。
 
-7. **异步架构与缓存防护**：全链路 asyncio 异步架构，ChatOpenAI 实例按 Key 缓存复用；缓存穿透（空值标记）、缓存雪崩（TTL 抖动）防护策略保障高并发下 LLM 响应稳定性。
+6. **Bing/百度双搜 + 知识时效补足**：双引擎并发（FIRST_COMPLETED），16 个关键词触发联网搜索，14 个过时标记检测 + 自动重试。
 
-8. **智能化 Agent 能力**：集成 LangChain ChatOpenAI 封装 DeepSeek 大模型调用。intent 节点 temperature=0.1 加速意图识别，各子 Agent 分派专用 System Prompt，Supervisor 质检不满意自动退栈重答，最多 3 轮纠错，降低大模型幻觉。
+7. **RAG 混合检索知识库**：BGE 本地嵌入（512 维） + BM25 混合融合（0.6+0.4），语义分块 + query 重写，支持 .txt/.md/.pdf 上传，动态新增无需重训模型。
 
-## 项目总结
+8. **会话级上下文记忆**：基于 session_id 隔离，Redis 存储（TTL=3600s）+ 内存二级降级，最多保留 20 轮，1 小时无活动自动清除。TCP 探活解决 redis-py 8.0 超时 bug。
 
-独立完成多智能体协作平台前后端全流程开发，构建了覆盖多 Agent 调度编排、断路器熔断降级、联网搜索增强、会话记忆持久化的完整解决方案。掌握 FastAPI 全异步开发、LangChain Agent 集成、断路器设计模式、Redis 分布式限流与会话持久化、Docker 容器化部署的工程实践能力。
+9. **流式输出 + LLM 缓存**：`graph.astream()` 逐 token SSE 推送（1s 首字），SHA256 内存缓存（5ms 命中 218 QPS）。
+
+## Benchmark
+
+| 场景 | 延迟 | QPS |
+|------|------|-----|
+| 缓存命中 | 5ms | 218 |
+| 纯路由吞吐 | P50=190ms | 905 |
+| 首次 LLM 回答 | 8.5s | — |
+| 旧冷启动（修复前） | ~100s | — |
+
+## 五层架构图
+
+```
+L5  React SPA (Vite + TypeScript + TailwindCSS)
+    │  SSE streaming / Auth / KB manager
+    ▼
+L4  ReAct 决策 (Thought → Action → Observation → Final Answer)
+    │  _run_react_loop() 共享函数
+    ▼  Action: rag_search | web_search | rate_stats | session_info
+L3  MCP 工具总线 (MCPToolRegistry, ~60行自研)
+    │  统一注册/调用/日志/权限
+    ▼
+L2  RAG 知识库 (BGE small 512维 + BM25 混合检索)
+    │  语义分块 / query 重写
+    ▼
+L1  LLM 基座 (DeepSeek API + Qwen2.5-3B LoRA)
+```
+
+## 启动
+
+```bash
+# 后端
+cd agents && venv\Scripts\uvicorn main:app --host 0.0.0.0 --port 8000
+
+# 前端（新终端）
+cd frontend && npm run dev  # localhost:5173 → proxy → :8000
+
+# 测试
+cd agents && venv\Scripts\python -m pytest tests/ -v
+```

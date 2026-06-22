@@ -10,7 +10,7 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
     # Token Bucket Rate Limiter — Global
-    GLOBAL_RATE: float = float(os.getenv("GLOBAL_RATE", "20.0"))
+    GLOBAL_RATE: float = float(os.getenv("GLOBAL_RATE", "100.0"))
     GLOBAL_CAPACITY: int = int(os.getenv("GLOBAL_CAPACITY", "50"))
 
     # Token Bucket Rate Limiter — Per-User
@@ -54,6 +54,13 @@ class Settings:
 
     # LangGraph
     AGENT_TIMEOUT: int = int(os.getenv("AGENT_TIMEOUT", "120"))
+
+    # Embedding
+    EMBED_MODE: str = os.getenv("EMBED_MODE", "auto")  # online / local / auto
+    EMBED_LOCAL_MODEL: str = os.getenv("EMBED_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5")
+    EMBED_ONLINE_KEY: str = os.getenv("EMBED_ONLINE_KEY", "")
+    EMBED_ONLINE_URL: str = os.getenv("EMBED_ONLINE_URL", "https://api.openai.com/v1")
+    EMBED_ONLINE_MODEL: str = os.getenv("EMBED_ONLINE_MODEL", "text-embedding-ada-002")
 
 
 settings = Settings()

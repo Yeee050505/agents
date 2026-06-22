@@ -88,6 +88,7 @@ class LLMAPIPool:
     def __init__(self):
         self._instances: list[LLMInstance] = []
         self._lock = asyncio.Lock()
+        self._round_robin_index = 0
         self._init_from_config()
 
     def _init_from_config(self):
@@ -112,6 +113,19 @@ class LLMAPIPool:
             if await inst.allow_request():
                 results.append(inst)
         return results
+
+    async def get_next_instance(self) -> LLMInstance | None:
+        """轮询返回下一个可用实例（负载均衡 + 熔断感知）"""
+        async with self._lock:
+            # 先用轮询偏移量排序健康实例，下次起始位置不同
+            healthy = []
+            for inst in self._instances:
+                if await inst.allow_request():
+                    healthy.append(inst)
+            if not healthy:
+                return None
+            self._round_robin_index = (self._round_robin_index + 1) % len(healthy)
+            return healthy[(self._round_robin_index - 1) % len(healthy)]
 
     @property
     def is_degraded(self) -> bool:

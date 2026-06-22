@@ -111,3 +111,51 @@ mcp_registry.register(
         "required": ["session_id"],
     },
 )
+
+
+# ═══════ 体育赛事数据 ═══════
+
+async def _tool_sports_search(query: str = ""):
+    from app.tools.sports import search_sports
+    results = await search_sports(query)
+    return {"query": query, "results": results[:500] if results else "未找到相关比赛数据"}
+
+mcp_registry.register(
+    name="sports_search",
+    description="搜索体育赛事比分、赛程、比赛结果等数据。传入比赛描述（球队、日期、赛事），返回比分和赛程信息。适用于足球、篮球等体育赛事查询。",
+    handler=_tool_sports_search,
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "比赛描述，如「日本 vs 荷兰 2026年6月15日 世界杯」"},
+        },
+        "required": ["query"],
+    },
+)
+
+
+# ═══════ L2: RAG 知识库 ═══════
+
+async def _tool_rag_search(query: str = "", k: int = 3):
+    from app.rag import rag_engine
+    hits = await rag_engine.search(query, k=k)
+    if not hits:
+        return {"query": query, "results": "未找到相关内容"}
+    lines = []
+    for h in hits:
+        lines.append(f"[相关性 {h['score']:.2f}] {h['text']}")
+    return {"query": query, "results": "\n\n".join(lines)}
+
+mcp_registry.register(
+    name="rag_search",
+    description="搜索本地知识库（世界杯、体育、通用文档）。传入关键词，返回最相关的文档片段。用于查询历届赛事、规则、历史数据等。",
+    handler=_tool_rag_search,
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "搜索关键词"},
+            "k": {"type": "integer", "description": "返回结果数量（默认3）"},
+        },
+        "required": ["query"],
+    },
+)

@@ -2,14 +2,32 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import List, Optional
+from urllib.parse import quote
 from app.utils.logger import logger
 
 
 async def search_web(query: str, max_results: int = 5) -> str:
-    result = await _search_bing(query, max_results)
-    if not result:
-        result = await _search_baidu(query, max_results)
-    return result
+    bing = asyncio.create_task(_search_bing(query, max_results))
+    baidu = asyncio.create_task(_search_baidu(query, max_results))
+
+    done, pending = await asyncio.wait(
+        [bing, baidu],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    for task in done:
+        result = task.result()
+        if result:
+            for p in pending:
+                p.cancel()
+            return result
+
+    for task in pending:
+        result = await task
+        if result:
+            return result
+
+    return ""
 
 
 async def _search_bing(query: str, max_results: int = 5) -> str:
@@ -21,27 +39,21 @@ async def _search_bing(query: str, max_results: int = 5) -> str:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
             "Accept-Language": "zh-CN,zh;q=0.9",
         }
-        loop = asyncio.get_running_loop()
-
-        def _fetch():
-            with httpx.Client(timeout=10, headers=headers, follow_redirects=True) as client:
-                resp = client.get(f"https://www.bing.com/search?q={query}&mkt=zh-CN&count={max_results}")
-                soup = BeautifulSoup(resp.text, "html.parser")
-                results = []
-                for item in soup.select("li.b_algo")[:max_results]:
-                    title_el = item.select_one("h2 a")
-                    body_el = item.select_one(".b_caption p")
-                    href = title_el.get("href", "") if title_el else ""
-                    title = title_el.get_text(strip=True) if title_el else ""
-                    body = body_el.get_text(strip=True) if body_el else ""
-                    if title:
-                        results.append({"title": title, "body": body[:200], "href": href})
-                return results
-
-        results = await loop.run_in_executor(None, _fetch)
-        if results:
-            logger.info(f"Bing search: {len(results)} results for '{query[:30]}...'")
-        return _format_results(results)
+        async with httpx.AsyncClient(timeout=5, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(f"https://www.bing.com/search?q={quote(query)}&mkt=zh-CN&count={max_results}")
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = []
+            for item in soup.select("li.b_algo")[:max_results]:
+                title_el = item.select_one("h2 a")
+                body_el = item.select_one(".b_caption p")
+                href = title_el.get("href", "") if title_el else ""
+                title = title_el.get_text(strip=True) if title_el else ""
+                body = body_el.get_text(strip=True) if body_el else ""
+                if title:
+                    results.append({"title": title, "body": body[:200], "href": href})
+            if results:
+                logger.info(f"Bing search: {len(results)} results for '{query[:30]}...'")
+            return _format_results(results)
     except Exception as e:
         logger.warning(f"Bing search failed: {e}")
         return ""
@@ -55,25 +67,19 @@ async def _search_baidu(query: str, max_results: int = 5) -> str:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0",
         }
-        loop = asyncio.get_running_loop()
-
-        def _fetch():
-            with httpx.Client(timeout=10, headers=headers, follow_redirects=True) as client:
-                resp = client.get(f"https://www.baidu.com/s?wd={query}&rn={max_results}&ie=utf-8")
-                soup = BeautifulSoup(resp.text, "html.parser")
-                results = []
-                for item in soup.select(".result, .c-container")[:max_results]:
-                    title_el = item.select_one("h3 a")
-                    body_el = item.select_one(".c-abstract, .c-span-last")
-                    href = title_el.get("href", "") if title_el else ""
-                    title = title_el.get_text(strip=True) if title_el else ""
-                    body = body_el.get_text(strip=True) if body_el else ""
-                    if title:
-                        results.append({"title": title, "body": body[:200], "href": href})
-                return results
-
-        results = await loop.run_in_executor(None, _fetch)
-        return _format_results(results)
+        async with httpx.AsyncClient(timeout=5, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(f"https://www.baidu.com/s?wd={quote(query)}&rn={max_results}&ie=utf-8")
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = []
+            for item in soup.select(".result, .c-container")[:max_results]:
+                title_el = item.select_one("h3 a")
+                body_el = item.select_one(".c-abstract, .c-span-last")
+                href = title_el.get("href", "") if title_el else ""
+                title = title_el.get_text(strip=True) if title_el else ""
+                body = body_el.get_text(strip=True) if body_el else ""
+                if title:
+                    results.append({"title": title, "body": body[:200], "href": href})
+            return _format_results(results)
     except Exception as e:
         logger.warning(f"Baidu search failed: {e}")
         return ""
@@ -97,6 +103,8 @@ def needs_realtime_search(text: str) -> bool:
         "2025", "2026", "今年", "最近", "当前", "现在",
         "热搜", "榜单", "趋势", "火了", "热门", "六月",
         "发生什么", "刚发生的", "目前",
+        "过去", "昨天", "前天", "上周", "本月", "近期",
+        "前几天", "这周", "这个月",
     ]
     return any(kw in text for kw in keywords)
 

@@ -11,17 +11,31 @@ class CacheService:
     def __init__(self):
         self._client: Optional[aioredis.Redis] = None
 
-    async def init(self):
-        self._client = aioredis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            password=settings.REDIS_PASSWORD or None,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
+    async def _redis_reachable(self) -> bool:
+        """TCP 快速探活 Redis，避免 redis-py 8.0 的 25s 超时问题"""
         try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(settings.REDIS_HOST, settings.REDIS_PORT),
+                timeout=2,
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except Exception:
+            return False
+
+    async def init(self):
+        if not await self._redis_reachable():
+            logger.warning("Redis not reachable, cache disabled")
+            return
+        try:
+            self._client = aioredis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD or None,
+                decode_responses=True,
+            )
             await self._client.ping()
             logger.info("Redis connected")
         except Exception as e:
