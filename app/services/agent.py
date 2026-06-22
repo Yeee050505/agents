@@ -116,17 +116,16 @@ async def _run_react_loop(
 
     # 对时效性查询，预热搜索注入上下文，避免 LLM 不主动调 web_search
     has_web_search = "web_search" in tool_name_set
-    pre_searched = False
     if has_web_search and needs_realtime_search(user_message):
         try:
             pre_search = await search_web(user_message, max_results=5)
             if pre_search:
                 conversation += f"[联网搜索结果——必须基于以下信息回答]\n{pre_search}\n\n"
-                pre_searched = True
         except Exception:
             pass
 
     empty_count = 0
+    stale_retry = 0
 
     for step in range(max_steps):
         content, tool_calls = await _call_llm(prompt, conversation, temperature=0.1, tools=tools_schema)
@@ -169,8 +168,17 @@ async def _run_react_loop(
 
         # 已生成最终回答 → 检查过时，非过时才返回
         if answer:
-            if pre_searched and is_stale_response(answer):
-                conversation += f"Assistant: {answer}\n注意：以上回答使用了过时的训练知识。当前日期是 {now}，请严格根据[联网搜索结果]重新回答。\n\n"
+            if is_stale_response(answer):
+                stale_retry += 1
+                if stale_retry >= 2 and has_web_search:
+                    try:
+                        pre_search = await search_web(user_message, max_results=5)
+                        if pre_search:
+                            conversation += f"[联网搜索结果——必须基于以下信息回答]\n{pre_search}\n\n"
+                            continue
+                    except Exception:
+                        pass
+                conversation += f"Assistant: {answer}\n注意：以上回答使用了过时的训练知识。当前日期是 {now}，请使用 web_search 工具搜索最新信息后回答。\n\n"
                 continue
             return answer
 
