@@ -14,6 +14,7 @@ from app.mcp import mcp_registry
 from app.rag import rag_engine
 from app.services.llm_cache import llm_cache
 from app.utils.logger import logger
+from app.quality import quality_tracker
 
 
 MAX_LOOPS = 3
@@ -127,6 +128,8 @@ async def _run_react_loop(
     empty_count = 0
     stale_retry = 0
 
+    quality_tracker.begin(user_message, node_name, request_id="", session_id="")
+
     for step in range(max_steps):
         content, tool_calls = await _call_llm(prompt, conversation, temperature=0.1, tools=tools_schema)
 
@@ -139,6 +142,7 @@ async def _run_react_loop(
                 conversation += f"Assistant: 调用工具 {tool_name}({args})\n"
                 try:
                     tool_result = await mcp_registry.call_tool(tool_name, args)
+                    quality_tracker.record_tool_call(tool_name, args, tool_result)
                     if not tool_result or "未找到相关内容" in str(tool_result):
                         tool_result = f"工具「{tool_name}」未返回有效结果"
                     else:
@@ -148,6 +152,7 @@ async def _run_react_loop(
                 conversation += f"Observation: {tool_result}\n\n"
             if all_empty:
                 empty_count += 1
+                quality_tracker.record_empty()
                 if empty_count >= 2:
                     conversation += "注意：已连续多次未查到，请直接告知用户无法获取相关信息，用 Final Answer 结束。\n\n"
             else:
@@ -156,6 +161,7 @@ async def _run_react_loop(
 
         # Path 2: Text-format ReAct fallback (for local/LoRA models)
         if not content:
+            quality_tracker.finish("", 0)
             return "处理失败，请稍后重试。"
 
         answer = ""
@@ -170,6 +176,7 @@ async def _run_react_loop(
         if answer:
             if is_stale_response(answer):
                 stale_retry += 1
+                quality_tracker.record_stale()
                 if stale_retry >= 2 and has_web_search:
                     try:
                         pre_search = await search_web(user_message, max_results=5)
@@ -180,6 +187,7 @@ async def _run_react_loop(
                         pass
                 conversation += f"Assistant: {answer}\n注意：以上回答使用了过时的训练知识。当前日期是 {now}，请使用 web_search 工具搜索最新信息后回答。\n\n"
                 continue
+            quality_tracker.finish(answer, step + 1)
             return answer
 
         action_match = re.search(r"Action:\s*(\w+)", content)
@@ -203,8 +211,10 @@ async def _run_react_loop(
         conversation += f"Assistant: {content}\n"
         try:
             tool_result = await mcp_registry.call_tool(tool_name, args)
+            quality_tracker.record_tool_call(tool_name, args, tool_result)
             if not tool_result or "未找到相关内容" in str(tool_result):
                 empty_count += 1
+                quality_tracker.record_empty()
                 tool_result = f"工具「{tool_name}」未返回有效结果"
                 if empty_count >= 2:
                     tool_result += "，连续未查到，请告知用户无法获取相关信息"
@@ -214,6 +224,7 @@ async def _run_react_loop(
             tool_result = f"工具「{tool_name}」调用失败: {e}"
         conversation += f"Observation: {tool_result}\n\n"
 
+    quality_tracker.finish("", max_steps)
     return "已达最大推理步数，请简化问题后重试。"
 
 

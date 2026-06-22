@@ -283,3 +283,19 @@ async def bench_echo(body: dict):
 @router.get("/llm-cache/stats")
 async def cache_stats():
     return llm_cache.stats()
+
+
+# ====== 质量追踪 ======
+
+from app.quality import quality_tracker
+
+
+@router.get("/quality/stats")
+async def quality_stats():
+    return success(data=quality_tracker.compute_stats())
+
+
+@router.get("/quality/records")
+async def quality_records(limit: int = 50, offset: int = 0):
+    records = quality_tracker.read_records(limit=limit, offset=offset)
+    return success(data={"records": records, "total": len(records)})
