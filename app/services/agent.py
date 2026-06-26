@@ -15,6 +15,7 @@ from app.rag import rag_engine
 from app.services.llm_cache import llm_cache
 from app.utils.logger import logger
 from app.quality import quality_tracker
+from app.memory import memory_service
 
 
 MAX_LOOPS = 3
@@ -610,10 +611,19 @@ async def run_agent_stream(message: str, user_id: str, session_id: str, request_
             if len(answer) >= 10 and not is_stale_response(answer):
                 yield {"token": answer}
                 await save_history(session_id, full_messages + [{"role": "ai", "content": answer}])
+                _extract_later(answer)
                 yield {"intent": "lora", "session_id": session_id, "loop_count": 0}
                 return
         except Exception:
             logger.info("LoRA stream fallback to graph")
+
+    # 长期记忆召回
+    memory_context = await memory_service.recall(message, user_id)
+    if memory_context:
+        full_messages.append({"role": "system", "content": memory_context})
+    _extract_later = lambda ans: asyncio.ensure_future(
+        memory_service.extract(f"用户: {message}\n助手: {ans}", user_id, _call_llm_text, session_id)
+    ) if ans else None
 
     initial_state: AgentState = {
         "messages": full_messages,
@@ -642,6 +652,7 @@ async def run_agent_stream(message: str, user_id: str, session_id: str, request_
                             full_answer = chunk
                             yield {"token": new_part}
         await save_history(session_id, full_messages + [{"role": "ai", "content": full_answer}])
+        _extract_later(full_answer)
         yield {"intent": intent or "chat", "session_id": session_id, "loop_count": 0}
     except Exception as e:
         logger.error(f"Agent stream failed: {e}", exc_info=True)
@@ -663,8 +674,13 @@ async def run_agent(
     history = await get_history(session_id)
     logger.info(f"Session {session_id}: {len(history)} history messages loaded", extra={"request_id": request_id})
 
+    messages = (list(history) if history else []) + [{"role": "human", "content": message}]
+    memory_context = await memory_service.recall(message, user_id)
+    if memory_context:
+        messages.append({"role": "system", "content": memory_context})
+
     initial_state: AgentState = {
-        "messages": (list(history) if history else []) + [{"role": "human", "content": message}],
+        "messages": messages,
         "intent": "",
         "loop_count": 0,
         "task_complete": False,
@@ -678,11 +694,15 @@ async def run_agent(
     try:
         final_state = await asyncio.wait_for(
             agent_graph.ainvoke(initial_state), timeout=settings.AGENT_TIMEOUT)
+        answer = final_state["final_answer"]
         await save_history(session_id, final_state["messages"])
+        if answer:
+            asyncio.ensure_future(
+                memory_service.extract(f"用户: {message}\n助手: {answer}", user_id, _call_llm_text, session_id))
         logger.info(f"Agent completed: intent={final_state['intent']}, loops={final_state['loop_count']}",
                     extra={"request_id": request_id, "user_id": user_id})
         return {
-            "answer": final_state["final_answer"],
+            "answer": answer,
             "intent": final_state["intent"],
             "loop_count": final_state["loop_count"],
             "session_id": session_id,

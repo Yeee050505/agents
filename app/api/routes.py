@@ -285,6 +285,25 @@ async def cache_stats():
     return llm_cache.stats()
 
 
+# ====== 长期记忆 ======
+
+from app.memory import memory_service
+
+
+@router.get("/memory/{user_id}")
+async def memory_list(user_id: str):
+    memories = await memory_service.list_memories(user_id)
+    return success(data={"user_id": user_id, "memories": memories, "total": len(memories)})
+
+
+@router.delete("/memory/{user_id}/{memory_id}")
+async def memory_delete(user_id: str, memory_id: str):
+    ok = await memory_service.delete_memory(user_id, memory_id)
+    if not ok:
+        raise HTTPException(404, "Memory not found")
+    return success(msg="记忆已删除")
+
+
 # ====== 质量追踪 ======
 
 from app.quality import quality_tracker
