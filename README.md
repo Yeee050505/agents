@@ -1,67 +1,23 @@
-# 多智能体协作平台
+# GameNexus 游戏RAG问答系统
 
-## 技术栈
+**技术栈**：Python、FastAPI、Steam Web API、BM25 检索、jieba 分词、BGE Embedding、React、Ant Design
 
-FastAPI · LangChain · LangGraph · DeepSeek · Qwen2.5-3B+LoRA · BGE · Redis · SQLite · Docker · React+Vite+TypeScript+TailwindCSS
+**项目痛点**：原生大模型问答存在 3.5s+ 响应时延（LLM API 往返耗时）、内置知识库时效性差、模型接口单点故障等问题；游戏价格浮动、新品发售、实时评分等动态数据无法依托模型静态知识精准应答，传统单链路问答架构无法适配游戏多维度问答诉求。
 
-## 项目描述
+**核心工作**：搭建 Orchestrator（LangGraph StateGraph）调度的五模块多 Agent 协作体系，构建「本地私有知识库检索 + Steam API 实时数据拉取」双通道 RAG 架构，完成游戏全场景问答业务落地与效果验证；设计 LLM 密钥池熔断降级方案、长短时记忆管理机制，配套开发可视化前端管理平台并容器化部署。
 
-单一大模型在实时问答中存在延迟高、知识过时、无会话记忆、单点故障等问题。本项目基于 **五层解耦架构**（L1 LLM + L2 RAG + L3 MCP + L4 ReAct + L5 React）搭建了一个具备多 Agent 协作、ReAct 决策循环、MCP 工具总线、私有知识库、联网搜索增强、LoRA 本地推理、流式输出、高可用 LLM 调用的智能问答平台。
+**落地实现**
 
-1. **五层解耦架构**：L1 LLM 基座（DeepSeek API 3 Key 池+断路器 / Qwen2.5-3B LoRA）→ L2 RAG 知识库（BGE small + BM25 混合检索）→ L3 MCP 工具总线（统一注册/调用/日志）→ L4 ReAct 决策循环（Thought→Action→Observation→Final Answer）→ L5 React SPA 前端。
+1. **多 Agent 编排调度**：划分规划、检索、工具调用、摘要生成、结果校验五大职能 Agent，由 LangGraph 总调度器统筹任务并行执行（Planner→Retriever+ToolAgent 并行扇出→Summarizer→Validator→条件重写循环）；校验 Agent 自动识别模型幻觉并触发文本重生成流程，节点级异常自动重试 2 次，保障回答可信度与系统鲁棒性。
 
-2. **LangGraph 多 Agent 编排**：基于 LangGraph StateGraph 构建 7 节点（intent / code / knowledge / chat / tool / data / lora）+ supervisor 质检 + merger 合并的图式调度引擎，支持并行扇出（Send()）和 supervisor 重分类。
+2. **双通道混合检索**：CPU 轻量化部署 BM25+jieba 实现本地游戏静态知识库检索（游戏分类、厂商资料、行业常识、电竞体系），平均 **5ms** 响应；工具 Agent 对接 Steam Web API（storesearch + appdetails，无需 Key）拉取游戏实时售价、评分、发售状态，API 无数据时自动切换必应、百度双搜索引擎竞速兜底。
 
-3. **ReAct + MCP 协同决策**：共享 `_run_react_loop()` 函数实现 ReAct 循环，所有外部数据访问强制通过 MCP 工具总线（`rag_search` / `web_search` / `rate_stats` / `session_info`），各节点禁止直连 RAG/搜索。
+3. **LLM 高可用容错设计**：搭建多密钥资源池，搭配三态断路器 + 指数退避熔断策略（重试区间 10s~120s），规避大模型接口崩溃、限流等线上故障；LngGraph 升级至 1.2.9 兼容 langchain-core 1.5，并行扇出采用 `Annotated[list, operator.add]` reducer 规避状态冲突。
 
-4. **LLM 高可用密钥池**：3 把 DeepSeek Key 池化轮询 + 三态断路器（CLOSED→OPEN→HALF_OPEN）+ 指数退避（10s→120s），`_call_llm` 主实例失败遍历剩余健康实例，全部熔断友好降级。
+4. **轻量化知识库 & 质量监控**：支持 txt/md/pdf 文件上传与知识库全量 CRUD 操作；采集工具调用命中率、幻觉率、接口耗时等指标存入 JSONL 日志，形成问答质量闭环追踪。
 
-5. **LoRA 本地推理**：Qwen2.5-3B + LoRA 适配器（世界杯助手，34 Q&A 10 epoch），RTX 4060 8GB 运行，体育/世界杯关键词自动路由到本地 GPU，降低 API 成本，低质量回答自动降级 ReAct-MCP。
+5. **对话体验优化**：依托 SSE 实现回答流式输出与 Agent 全链路可视化（`/api/v1/chat/flow`），搭配 10 轮滑动窗口短时记忆 + BGE-768 向量构建长时记忆（向量余弦 0.85 阈值去重 + NumPy 检索 + 文件持久化）。
 
-6. **Bing/百度双搜 + 知识时效补足**：双引擎并发（FIRST_COMPLETED），16 个关键词触发联网搜索，14 个过时标记检测 + 自动重试。
+6. **前端可视化与部署**：使用 React+Ant Design 开发对话交互、知识库管理、运行指标监控页面；开放流式接口可视化 Agent 完整执行链路，项目整体基于 Docker 打包交付。
 
-7. **RAG 混合检索知识库**：BGE 本地嵌入（512 维） + BM25 混合融合（0.6+0.4），语义分块 + query 重写，支持 .txt/.md/.pdf 上传，动态新增无需重训模型。
-
-8. **会话级上下文记忆**：基于 session_id 隔离，Redis 存储（TTL=3600s）+ 内存二级降级，最多保留 20 轮，1 小时无活动自动清除。TCP 探活解决 redis-py 8.0 超时 bug。
-
-9. **流式输出 + LLM 缓存**：`graph.astream()` 逐 token SSE 推送（1s 首字），SHA256 内存缓存（5ms 命中 218 QPS）。
-
-## Benchmark
-
-| 场景 | 延迟 | QPS |
-|------|------|-----|
-| 缓存命中 | 5ms | 218 |
-| 纯路由吞吐 | P50=190ms | 905 |
-| 首次 LLM 回答 | 8.5s | — |
-| 旧冷启动（修复前） | ~100s | — |
-
-## 五层架构图
-
-```
-L5  React SPA (Vite + TypeScript + TailwindCSS)
-    │  SSE streaming / Auth / KB manager
-    ▼
-L4  ReAct 决策 (Thought → Action → Observation → Final Answer)
-    │  _run_react_loop() 共享函数
-    ▼  Action: rag_search | web_search | rate_stats | session_info
-L3  MCP 工具总线 (MCPToolRegistry, ~60行自研)
-    │  统一注册/调用/日志/权限
-    ▼
-L2  RAG 知识库 (BGE small 512维 + BM25 混合检索)
-    │  语义分块 / query 重写
-    ▼
-L1  LLM 基座 (DeepSeek API + Qwen2.5-3B LoRA)
-```
-
-## 启动
-
-```bash
-# 后端
-cd agents && venv\Scripts\uvicorn main:app --host 0.0.0.0 --port 8000
-
-# 前端（新终端）
-cd frontend && npm run dev  # localhost:5173 → proxy → :8000
-
-# 测试
-cd agents && venv\Scripts\python -m pytest tests/ -v
-```
+**量化成果**：首字输出时延 **3.5s**（受限于 LLM API 全量返回模式），系统冷启动耗时 **＜1s**，纯模型问答平均耗时 **3.5s**，健康检查接口 QPS 达 **851**（单 worker），缓存响应耗时低至 **5ms**。

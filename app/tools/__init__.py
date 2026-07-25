@@ -1,7 +1,6 @@
 from __future__ import annotations
 import asyncio
-import re
-from typing import List, Optional
+from typing import Optional
 from urllib.parse import quote
 from app.utils.logger import logger
 
@@ -9,24 +8,20 @@ from app.utils.logger import logger
 async def search_web(query: str, max_results: int = 5) -> str:
     bing = asyncio.create_task(_search_bing(query, max_results))
     baidu = asyncio.create_task(_search_baidu(query, max_results))
-
     done, pending = await asyncio.wait(
         [bing, baidu],
         return_when=asyncio.FIRST_COMPLETED,
     )
-
     for task in done:
         result = task.result()
         if result:
             for p in pending:
                 p.cancel()
             return result
-
     for task in pending:
         result = await task
         if result:
             return result
-
     return ""
 
 
@@ -34,7 +29,6 @@ async def _search_bing(query: str, max_results: int = 5) -> str:
     try:
         import httpx
         from bs4 import BeautifulSoup
-
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
             "Accept-Language": "zh-CN,zh;q=0.9",
@@ -63,7 +57,6 @@ async def _search_baidu(query: str, max_results: int = 5) -> str:
     try:
         import httpx
         from bs4 import BeautifulSoup
-
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0",
         }
@@ -95,27 +88,3 @@ def _format_results(results: list) -> str:
         title = r.get("title") or ""
         lines.append(f"[{i}] {title}\n    {body}\n    {href}")
     return "\n\n".join(lines)
-
-
-def needs_realtime_search(text: str) -> bool:
-    keywords = [
-        "热点", "实时", "最新", "新闻", "今天", "今日",
-        "2025", "2026", "今年", "最近", "当前", "现在",
-        "热搜", "榜单", "趋势", "火了", "热门", "六月",
-        "发生什么", "刚发生的", "目前",
-        "过去", "昨天", "前天", "上周", "本月", "近期",
-        "前几天", "这周", "这个月",
-    ]
-    return any(kw in text for kw in keywords)
-
-
-def is_stale_response(text: str) -> bool:
-    stale_markers = [
-        "知识截止", "无法获取", "无法实时", "实时信息",
-        "截至", "我的知识", "训练数据", "无法提供当前",
-        "无法提供最新", "启用联网搜索", "无法实时搜索",
-        "无法提供", "暂不可用", "没有联网", "无法联网",
-        "不支持实时", "请自行搜索", "无法搜索",
-        "知识库有截止", "直接获取", "没有直接",
-    ]
-    return any(m in text for m in stale_markers)
