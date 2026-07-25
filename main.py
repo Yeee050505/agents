@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 from app.utils.logger import logger
 
 
@@ -24,15 +24,33 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 from app.api.routes import router
 app.include_router(router, prefix="/api/v1")
 
+# --- Frontend static serving ---
+FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/docs")
+if FRONTEND_DIST.exists():
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse, JSONResponse
 
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets")
 
-@app.get("/favicon.ico")
-async def favicon():
-    return {"code": 200, "message": "GameNexus 游戏RAG问答系统 v2.0"}
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return FileResponse(str(FRONTEND_DIST / "index.html"))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        if full_path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"code": 404, "message": "Not found"})
+        fp = FRONTEND_DIST / full_path
+        if fp.is_file():
+            return FileResponse(str(fp))
+        return FileResponse(str(FRONTEND_DIST / "index.html"))
+else:
+    from fastapi.responses import JSONResponse
+
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return JSONResponse(content={"code": 200, "message": "GameNexus v2.0", "api_docs": "/docs"})
 
 if __name__ == "__main__":
     import uvicorn

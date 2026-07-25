@@ -19,6 +19,9 @@ class ShortTermMemory:
         if len(self._sessions[session_id]) > self.max_turns * 2:
             self._sessions[session_id] = self._sessions[session_id][-self.max_turns * 2:]
 
+    def clear(self, session_id: str):
+        self._sessions.pop(session_id, None)
+
     def format_context(self, session_id: str) -> str:
         history = self.get_history(session_id)
         if not history:
