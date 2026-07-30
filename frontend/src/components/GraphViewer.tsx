@@ -10,8 +10,24 @@ const NODE_COLORS: Record<NodeStatus, string> = {
   failed: '#F97316',
 };
 
+const LAYER: Record<string, number> = {
+  planner: 0, retriever_tool: 1, summarizer: 2, validator: 3,
+};
+const NODE_BY_PHASE: Record<number, string> = { 0: 'planner', 1: 'planner', 2: 'retriever_tool', 3: 'summarizer', 4: 'validator' };
+const PHASE_BY_NODE: Record<string, number> = { planner: 1, retriever_tool: 2, summarizer: 3, validator: 4 };
+
 interface Props {
   sessionId?: string;
+}
+
+function calcPositions(graph: WorkflowGraph) {
+  const pos: Record<string, { x: number; y: number }> = {};
+  graph.nodes.forEach(n => {
+    const layer = LAYER[n.id] ?? 99;
+    pos[n.id] = { x: 50 + layer * 160, y: 50 + (n.id === 'retriever_tool' ? 80 : 0) };
+  });
+  pos.__end__ = { x: 50 + 4 * 160, y: 50 };
+  return pos;
 }
 
 export default function GraphViewer({ sessionId }: Props) {
@@ -19,6 +35,7 @@ export default function GraphViewer({ sessionId }: Props) {
   const [nodeStatus, setNodeStatus] = useState<Record<string, NodeStatus>>({});
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
   const [highlightNode, setHighlightNode] = useState('');
+  const [showModal, setShowModal] = useState(false);
   const statusRef = useRef(nodeStatus);
 
   useEffect(() => {
@@ -27,7 +44,6 @@ export default function GraphViewer({ sessionId }: Props) {
     });
   }, []);
 
-  // Fetch snapshots for dot indicators
   useEffect(() => {
     if (!sessionId) { setSnapshots([]); return; }
     fetch(`/api/v1/harness/checkpoints/${sessionId}?include_deleted=false`)
@@ -38,7 +54,6 @@ export default function GraphViewer({ sessionId }: Props) {
 
   useEffect(() => { statusRef.current = nodeStatus; }, [nodeStatus]);
 
-  // Listen for step events from chat
   useEffect(() => {
     const handler = (e: CustomEvent) => {
       const detail = e.detail;
@@ -58,11 +73,8 @@ export default function GraphViewer({ sessionId }: Props) {
     return () => window.removeEventListener('agent-step', handler as EventListener);
   }, []);
 
-  // Listen for highlight events from CheckpointModal
   useEffect(() => {
-    const handler = (e: CustomEvent) => {
-      setHighlightNode(e.detail.nodeId || '');
-    };
+    const handler = (e: CustomEvent) => setHighlightNode(e.detail.nodeId || '');
     window.addEventListener('checkpoint-highlight-node', handler as EventListener);
     return () => window.removeEventListener('checkpoint-highlight-node', handler as EventListener);
   }, []);
@@ -80,21 +92,79 @@ export default function GraphViewer({ sessionId }: Props) {
     return <p className="text-gray-600 text-xs">加载流程图...</p>;
   }
 
-  const nodePositions: Record<string, { x: number; y: number }> = {};
-  const LAYER: Record<string, number> = {
-    planner: 0, retriever_tool: 1, summarizer: 2, validator: 3,
-  };
-  const NODE_BY_PHASE: Record<number, string> = { 0: 'planner', 1: 'planner', 2: 'retriever_tool', 3: 'summarizer', 4: 'validator' };
-  const PHASE_BY_NODE: Record<string, number> = { planner: 1, retriever_tool: 2, summarizer: 3, validator: 4 };
-
-  graph.nodes.forEach(n => {
-    const layer = LAYER[n.id] ?? 99;
-    nodePositions[n.id] = { x: 50 + layer * 140, y: 50 + (n.id === 'retriever_tool' ? 70 : 0) };
-  });
-  nodePositions.__end__ = { x: 50 + 4 * 140, y: 50 };
+  const nodePositions = calcPositions(graph);
 
   return (
-    <svg viewBox="0 0 640 220" className="w-full h-auto max-h-56">
+    <>
+      {/* Small thumbnail — click to enlarge */}
+      <svg viewBox="0 0 720 240" className="w-full h-auto max-h-32 cursor-pointer hover:opacity-80 transition-opacity"
+        onClick={() => setShowModal(true)}>
+        {renderGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, false)}
+      </svg>
+
+      {/* Fullscreen modal */}
+      {showModal && (
+        <GraphModal graph={graph} nodePositions={nodePositions}
+          nodeStatus={nodeStatus} highlightNode={highlightNode}
+          hasSnapshot={hasSnapshot} handleDotClick={handleDotClick}
+          onClose={() => setShowModal(false)} />
+      )}
+    </>
+  );
+}
+
+function GraphModal({ graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, onClose }: {
+  graph: WorkflowGraph; nodePositions: Record<string, { x: number; y: number }>;
+  nodeStatus: Record<string, NodeStatus>; highlightNode: string;
+  hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 shadow-2xl max-w-[90vw] max-h-[90vh]"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-300">Agent 流程图</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
+        </div>
+        <svg viewBox="0 0 720 240" className="w-full max-w-4xl">
+          {renderGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, true)}
+        </svg>
+        <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
+          <span><span className="inline-block w-2 h-2 rounded bg-gray-500 mr-1" /> 空闲</span>
+          <span><span className="inline-block w-2 h-2 rounded bg-yellow-400 mr-1" /> 运行中</span>
+          <span><span className="inline-block w-2 h-2 rounded bg-green-400 mr-1" /> 完成</span>
+          <span><span className="inline-block w-2 h-2 rounded bg-red-400 mr-1" /> 错误</span>
+          <span><span className="inline-block w-2 h-2 rounded bg-blue-500 mr-1" /> 有检查点</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function renderGraph(
+  graph: WorkflowGraph,
+  nodePositions: Record<string, { x: number; y: number }>,
+  nodeStatus: Record<string, NodeStatus>,
+  highlightNode: string,
+  hasSnapshot: (id: string) => boolean,
+  handleDotClick: (p: number) => void,
+  large: boolean,
+) {
+  const nodeW = large ? 70 : 50;
+  const nodeH = large ? 32 : 24;
+  const fontSize = large ? 11 : 9;
+  const edgeW = large ? 2 : 1.5;
+  const dotR = large ? 8 : 6;
+  const labelSize = large ? 10 : 8;
+
+  return (
+    <g>
       {graph.edges.map((e, i) => {
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
@@ -103,19 +173,19 @@ export default function GraphViewer({ sessionId }: Props) {
         const midY = (from.y + to.y) / 2;
         return (
           <g key={i}>
-            <line x1={from.x + 25} y1={from.y} x2={to.x - 25} y2={to.y}
-              stroke={isLoop ? '#FBBF24' : '#6B7280'} strokeWidth={1.5}
+            <line x1={from.x + nodeW / 2} y1={from.y} x2={to.x - nodeW / 2} y2={to.y}
+              stroke={isLoop ? '#FBBF24' : '#6B7280'} strokeWidth={edgeW}
               strokeDasharray={isLoop ? '4,3' : 'none'}
               markerEnd={isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)'} />
-            {e.label && <text x={midX} y={midY - 8} textAnchor="middle" fill="#9CA3AF" fontSize={8}>{e.label}</text>}
+            {e.label && <text x={midX} y={midY - 10} textAnchor="middle" fill="#9CA3AF" fontSize={labelSize}>{e.label}</text>}
           </g>
         );
       })}
       <defs>
-        <marker id="arrowGray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <marker id="arrowGray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
           <path d="M0,0 L10,5 L0,10 Z" fill="#6B7280" />
         </marker>
-        <marker id="arrowYellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <marker id="arrowYellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
           <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
         </marker>
       </defs>
@@ -129,27 +199,23 @@ export default function GraphViewer({ sessionId }: Props) {
 
         return (
           <g key={n.id}>
-            {/* Checkpoint dot - clickable */}
             {cp && (
-              <circle cx={pos.x + 50} cy={pos.y - 12} r={6}
+              <circle cx={pos.x + nodeW + 6} cy={pos.y - nodeH / 2} r={dotR}
                 fill="#3B82F6" stroke="#60A5FA" strokeWidth={1.5}
                 className="cursor-pointer hover:fill-blue-400 transition-colors"
-                onClick={() => {
-                  const phase = PHASE_BY_NODE[n.id];
-                  if (phase) handleDotClick(phase);
-                }}>
+                onClick={() => { const p = PHASE_BY_NODE[n.id]; if (p) handleDotClick(p); }}>
                 <title>有检查点 - 点击打开管理面板</title>
               </circle>
             )}
-            <rect x={pos.x} y={pos.y - 12} width={50} height={24} rx={6}
+            <rect x={pos.x} y={pos.y - nodeH / 2} width={nodeW} height={nodeH} rx={8}
               fill={color + '30'} stroke={isHighlighted ? '#60A5FA' : color}
-              strokeWidth={isHighlighted ? 2.5 : (status === 'running' ? 2 : 1)} />
-            <text x={pos.x + 25} y={pos.y + 4} textAnchor="middle" fill="#E5E7EB" fontSize={9} fontWeight={500}>
+              strokeWidth={isHighlighted ? 3 : (status === 'running' ? 2.5 : 1.5)} />
+            <text x={pos.x + nodeW / 2} y={pos.y + fontSize / 3} textAnchor="middle" fill="#E5E7EB" fontSize={fontSize} fontWeight={500}>
               {n.label}
             </text>
           </g>
         );
       })}
-    </svg>
+    </g>
   );
 }
