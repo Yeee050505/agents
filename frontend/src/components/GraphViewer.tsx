@@ -135,8 +135,6 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   graph: WorkflowGraph; nodeStatus: Record<string, NodeStatus>; highlightNode: string;
   hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
 }) {
-  const [zoom, setZoom] = useState(1.5);
-  const [uiOpacity, setUiOpacity] = useState(100);
   const nodePositions = calcPositions(graph);
 
   useEffect(() => {
@@ -146,32 +144,16 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" style={{ opacity: uiOpacity / 100 }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-700 shadow-2xl w-[95vw] h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3 shrink-0">
           <h3 className="text-base font-semibold text-gray-200">Agent 流程图</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
         </div>
-        {/* Controls */}
-        <div className="flex items-center gap-6 mb-3 shrink-0 text-[10px] text-gray-500">
-          <div className="flex items-center gap-2">
-            <span>缩放</span>
-            <input type="range" min={1} max={4} step={0.1} value={zoom}
-              onChange={e => setZoom(parseFloat(e.target.value))}
-              className="w-20 accent-blue-500 h-1 cursor-pointer" />
-            <span className="font-mono w-6 text-right">{zoom.toFixed(1)}x</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>面板透明度</span>
-            <input type="range" min={10} max={100} value={uiOpacity}
-              onChange={e => setUiOpacity(parseInt(e.target.value))}
-              className="w-20 accent-blue-500 h-1 cursor-pointer" />
-            <span className="font-mono w-6 text-right">{uiOpacity}%</span>
-          </div>
-        </div>
+        {/* Controls — 定稿版移除调试控件 */}
         <div className="flex-1 min-h-0 overflow-auto flex items-start justify-center">
-          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="shrink-0">
+          <div style={{ transform: 'scale(1.5)', transformOrigin: 'top center' }} className="shrink-0">
             <svg viewBox="0 0 720 240" className="w-[720px] h-auto"
               preserveAspectRatio="xMidYMid meet">
               <defs>
@@ -186,15 +168,15 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
             </svg>
           </div>
         </div>
-        <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 shrink-0 text-[10px] text-gray-500 justify-center">
-          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-green-400" /> 并行扇出</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-purple-400" /> 并行汇聚</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-yellow-400" /> 条件重写</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-500" /> 空闲</span>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 shrink-0 text-[10px] text-gray-400 justify-center">
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-green-400" /> 分发流</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-purple-400" /> 汇总流</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-yellow-400" /> 迭代回路</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-gray-400" /> 校验流</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-600" /> 空闲</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-400" /> 运行中</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400" /> 完成</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400" /> 错误</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500" /> 有检查点</span>
         </div>
       </div>
     </div>
@@ -322,10 +304,10 @@ function svgGraph(
         return (
           <g>
             <rect x={rx} y={ry} width={rw} height={rh} rx={10}
-              fill="none" stroke="#10B981" strokeWidth={1}
-              strokeDasharray="4,3" opacity={0.5} />
-            <text x={rx + 6} y={ry - 4} fill="#10B981" fontSize={9}
-              textAnchor="start" fontWeight={600}>并行执行</text>
+              fill="none" stroke="#10B981" strokeWidth={1.5}
+              strokeDasharray="4,3" opacity={0.6} />
+            <text x={rx + rw / 2} y={ry - 4} fill="#34D399" fontSize={9}
+              textAnchor="middle" fontWeight={600}>并行执行</text>
           </g>
         );
       })()}
@@ -333,12 +315,13 @@ function svgGraph(
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
         const ep = edgePath(from, to, e.from, e.to, nodeW, nodeH, e.style);
+        const labelColor = e.style === 'branch' ? '#10B981' : (e.style === 'loop' ? '#FBBF24' : '#D1D5DB');
         return (
           <g key={i}>
             <path d={ep.d} fill="none" stroke={ep.color} strokeWidth={edgeW}
               strokeDasharray={ep.dashed ? '4,3' : 'none'}
               markerEnd={ep.marker} />
-            {e.label && <text x={ep.lx} y={ep.ly} textAnchor="middle" fill="#9CA3AF" fontSize={labelSize}>{e.label}</text>}
+            {e.label && <text x={ep.lx} y={ep.ly} textAnchor="middle" fill={labelColor} fontSize={labelSize}>{e.label}</text>}
           </g>
         );
       })}
@@ -360,10 +343,11 @@ function svgGraph(
               </circle>
             )}
             <rect x={pos.x} y={pos.y - nodeH / 2} width={nodeW} height={nodeH} rx={8}
-              fill={color + Math.round(opacity * 48).toString(16).padStart(2, '0')}
+              fill="#1F2937"
               stroke={isHighlighted ? '#60A5FA' : color}
-              strokeWidth={isHighlighted ? 3 : (status === 'running' ? 2.5 : 1.5)} />
-            <text x={pos.x + nodeW / 2} y={pos.y + fontSize / 3} textAnchor="middle" fill="#E5E7EB" fontSize={fontSize} fontWeight={500}>
+              strokeWidth={1.5}
+              strokeOpacity={0.7} />
+            <text x={pos.x + nodeW / 2} y={pos.y + fontSize / 3} textAnchor="middle" fill="#F3F4F6" fontSize={fontSize} fontWeight={500}>
               {n.label}
             </text>
           </g>
