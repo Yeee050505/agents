@@ -99,12 +99,12 @@ export default function GraphViewer({ sessionId }: Props) {
       {/* Small thumbnail — click to enlarge */}
       <svg viewBox="0 0 720 240" className="w-full h-auto max-h-32 cursor-pointer hover:opacity-80 transition-opacity"
         onClick={() => setShowModal(true)}>
-        {renderGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, false)}
+        {renderGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1)}
       </svg>
 
       {/* Fullscreen modal */}
       {showModal && (
-        <GraphModal graph={graph} nodePositions={nodePositions}
+        <GraphModal graph={graph}
           nodeStatus={nodeStatus} highlightNode={highlightNode}
           hasSnapshot={hasSnapshot} handleDotClick={handleDotClick}
           onClose={() => setShowModal(false)} />
@@ -113,11 +113,17 @@ export default function GraphViewer({ sessionId }: Props) {
   );
 }
 
-function GraphModal({ graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, onClose }: {
-  graph: WorkflowGraph; nodePositions: Record<string, { x: number; y: number }>;
-  nodeStatus: Record<string, NodeStatus>; highlightNode: string;
+function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotClick, onClose }: {
+  graph: WorkflowGraph; nodeStatus: Record<string, NodeStatus>; highlightNode: string;
   hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
 }) {
+  const scale = 2;
+  const nodePositions = calcPositions(graph);
+  const scaledPos: Record<string, { x: number; y: number }> = {};
+  for (const [k, v] of Object.entries(nodePositions)) {
+    scaledPos[k] = { x: v.x * scale, y: v.y * scale };
+  }
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
@@ -132,15 +138,15 @@ function GraphModal({ graph, nodePositions, nodeStatus, highlightNode, hasSnapsh
           <h3 className="text-sm font-semibold text-gray-300">Agent 流程图</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
         </div>
-        <svg viewBox="0 0 720 240" className="w-full max-w-4xl">
-          {renderGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, true)}
+        <svg viewBox={`0 0 ${720 * scale} ${240 * scale}`} className="w-full max-w-5xl">
+          {renderGraph(graph, scaledPos, nodeStatus, highlightNode, hasSnapshot, handleDotClick, scale)}
         </svg>
-        <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
-          <span><span className="inline-block w-2 h-2 rounded bg-gray-500 mr-1" /> 空闲</span>
-          <span><span className="inline-block w-2 h-2 rounded bg-yellow-400 mr-1" /> 运行中</span>
-          <span><span className="inline-block w-2 h-2 rounded bg-green-400 mr-1" /> 完成</span>
-          <span><span className="inline-block w-2 h-2 rounded bg-red-400 mr-1" /> 错误</span>
-          <span><span className="inline-block w-2 h-2 rounded bg-blue-500 mr-1" /> 有检查点</span>
+        <div className="flex gap-4 mt-3 text-xs text-gray-500">
+          <span><span className="inline-block w-3 h-3 rounded bg-gray-500 mr-1" /> 空闲</span>
+          <span><span className="inline-block w-3 h-3 rounded bg-yellow-400 mr-1" /> 运行中</span>
+          <span><span className="inline-block w-3 h-3 rounded bg-green-400 mr-1" /> 完成</span>
+          <span><span className="inline-block w-3 h-3 rounded bg-red-400 mr-1" /> 错误</span>
+          <span><span className="inline-block w-3 h-3 rounded bg-blue-500 mr-1" /> 有检查点</span>
         </div>
       </div>
     </div>
@@ -154,14 +160,14 @@ function renderGraph(
   highlightNode: string,
   hasSnapshot: (id: string) => boolean,
   handleDotClick: (p: number) => void,
-  large: boolean,
+  scale: number,
 ) {
-  const nodeW = large ? 70 : 50;
-  const nodeH = large ? 32 : 24;
-  const fontSize = large ? 11 : 9;
-  const edgeW = large ? 2 : 1.5;
-  const dotR = large ? 8 : 6;
-  const labelSize = large ? 10 : 8;
+  const nodeW = 50 * scale;
+  const nodeH = 24 * scale;
+  const fontSize = 9 * scale;
+  const edgeW = 1.5 * scale;
+  const dotR = 6 * scale;
+  const labelSize = 8 * scale;
 
   return (
     <g>
