@@ -232,7 +232,7 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const color = EDGE_COLORS[style || 'default'] || EDGE_COLORS.default;
   const marker = isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)';
 
-  // Loop: validator → summarizer —绕下穿行，从左侧接入摘要左边缘（箭头朝右）
+  // Loop: validator → summarizer — 标准矩形回环（绕下→水平→上拐→接入摘要左缘）
   if (isLoop) {
     const sx = from.x;
     const sy = from.y + h / 2;
@@ -243,7 +243,7 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
     const pts = [
       { x: sx, y: sy }, { x: sx, y: by }, { x: leftX, y: by }, { x: leftX, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: true, lx: (sx + leftX) / 2, ly: by - 6 };
+    return { d: roundPath(pts, R), marker, color, dashed: true, lx: (sx + leftX) / 2, ly: by + 10 };
   }
 
   const sx = from.x + w / 2;
@@ -251,40 +251,37 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const ex = to.x - w / 2;
   const ey = to.y;
 
-  // Branch: planner → retriever / tool — 至虚线框左缘分叉
+  // Branch: 两条独立并行出线（无共享段）
   if (style === 'branch') {
-    const bx = 127;
     if (toId === 'retriever') {
       const pts = [
-        { x: sx, y: sy }, { x: bx, y: sy }, { x: bx, y: 53 }, { x: ex, y: 53 },
+        { x: sx, y: sy }, { x: 105, y: sy }, { x: 105, y: 53 }, { x: ex, y: 53 },
       ];
-      return { d: roundPath(pts, R), marker, color, dashed: false, lx: bx, ly: sy - 8 };
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: 100, ly: sy - 8 };
     }
-    // tool: 框左缘分叉至下路
+    // tool
     const pts = [
-      { x: sx, y: sy }, { x: bx, y: sy }, { x: bx, y: 77 }, { x: ex, y: 77 },
+      { x: sx, y: sy }, { x: 190, y: sy }, { x: 190, y: 77 }, { x: ex, y: 77 },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: bx, ly: sy + 40 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: 188, ly: sy - 8 };
   }
 
-  // Merge: retriever / tool → summarizer — 虚线框右缘汇合
+  // Merge: 两条汇聚线右端汇合于一点
   if (style === 'merge') {
     const cx = 293;
     if (fromId === 'retriever') {
-      // 检索线从上方 y=25 绕行，避开工具模块，与扇出线平齐
       const pts = [
         { x: sx, y: sy }, { x: sx, y: 25 }, { x: cx, y: 25 }, { x: cx, y: ey }, { x: ex, y: ey },
       ];
       return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: 21 };
     }
-    // 工具线水平直连汇合点
     const pts = [
       { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy - 8 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy + 50 };
   }
 
-  // Default: orthogonal L-shape with rounded corner
+  // Default: orthogonal L-shape
   const mx = (sx + ex) / 2;
   const pts = [
     { x: sx, y: sy }, { x: mx, y: sy }, { x: mx, y: ey }, { x: ex, y: ey },
