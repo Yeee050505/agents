@@ -21,12 +21,16 @@ interface Props {
 }
 
 function calcPositions(graph: WorkflowGraph) {
+  const cx = (layer: number) => 50 + layer * 160;
   const pos: Record<string, { x: number; y: number }> = {};
   graph.nodes.forEach(n => {
     const layer = LAYER[n.id] ?? 99;
-    pos[n.id] = { x: 50 + layer * 160, y: n.id === 'tool' ? 130 : 50 };
+    const x = cx(layer);
+    if (n.id === 'retriever') pos[n.id] = { x: x - 35, y: 50 };
+    else if (n.id === 'tool') pos[n.id] = { x: x + 35, y: 50 };
+    else pos[n.id] = { x, y: 50 };
   });
-  pos.__end__ = { x: 50 + 4 * 160, y: 50 };
+  pos.__end__ = { x: cx(4), y: 50 };
   return pos;
 }
 
