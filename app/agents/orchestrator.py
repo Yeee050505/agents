@@ -105,7 +105,7 @@ async def node_tool(state: GameState) -> dict:
             return {
                 "tool_results": lst,
                 "events": [
-                    _ev("tool", "running", "正在查询 Steam API..."),
+                    _ev("tool", "running", "正在查询 TapTap API..."),
                     _ev("tool", "done", f"工具获取 {len(lst)} 条数据", {"count": len(lst)}),
                 ],
             }

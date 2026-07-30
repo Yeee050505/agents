@@ -8,7 +8,7 @@
 
 开发过程中遇到了以下实际问题需要解决：
 
-1. **数据源不可用** — 原定 Steam API（`store.steampowered.com`）从国内直连经常超时、丢包，甚至 SNI 阻断，导致工具 Agent 无法获取实时游戏数据
+1. **数据源不可用** — 部分海外游戏 API 从国内直连超时、丢包，甚至 SNI 阻断，导致工具 Agent 无法获取实时游戏数据
 2. **依赖兼容性** — LangGraph 从 0.0.57 升级到 1.2.9，`Annotated[list, operator.add]` reducer 在 `from __future__ import annotations` 下失效，并行扇出状态下冲突
 3. **前后端数据格式脱节** — 后端 `/kb/documents` 返回字段与前端 `KBDocument` 类型不一致，`/rate-limit/stats` 缺少 `llm_pool` 字段，导致前端渲染空白
 4. **LLM 单点故障** — 单 API Key 被限流或超时后全站不可用，缺乏熔断降级机制

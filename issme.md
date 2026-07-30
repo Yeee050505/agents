@@ -1,7 +1,7 @@
 # 项目遇到的实际问题
 
 ## 1. 数据源不可用
-原定 Steam API（`store.steampowered.com`）从国内直连经常超时、丢包，甚至 SNI 阻断，导致工具 Agent 无法获取实时游戏数据。
+部分海外游戏 API 从国内直连超时、丢包，甚至 SNI 阻断，导致工具 Agent 无法获取实时游戏数据。
 
 **解决方案**：替换为 TapTap 国内数据源，支持 `TAP_PROXY` 代理配置。
 
