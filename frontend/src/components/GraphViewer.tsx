@@ -22,15 +22,18 @@ interface Props {
 
 function calcPositions(graph: WorkflowGraph) {
   const cx = (layer: number) => 50 + layer * 160;
+  const yMap: Record<string, number> = {
+    planner: 30, retriever: 65, tool: 65, summarizer: 100, validator: 135, __end__: 135,
+  };
   const pos: Record<string, { x: number; y: number }> = {};
   graph.nodes.forEach(n => {
     const layer = LAYER[n.id] ?? 99;
     const x = cx(layer);
-    if (n.id === 'retriever') pos[n.id] = { x: x - 35, y: 50 };
-    else if (n.id === 'tool') pos[n.id] = { x: x + 35, y: 50 };
-    else pos[n.id] = { x, y: 50 };
+    if (n.id === 'retriever') pos[n.id] = { x: x - 35, y: yMap[n.id] || 50 };
+    else if (n.id === 'tool') pos[n.id] = { x: x + 35, y: yMap[n.id] || 50 };
+    else pos[n.id] = { x, y: yMap[n.id] || 50 };
   });
-  pos.__end__ = { x: cx(4), y: 50 };
+  pos.__end__ = { x: cx(4), y: yMap.__end__ || 50 };
   return pos;
 }
 
@@ -113,7 +116,7 @@ export default function GraphViewer({ sessionId }: Props) {
 
   return (
     <>
-      <svg viewBox="38 8 660 155" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
+      <svg viewBox="15 10 710 155" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
         onClick={() => setShowModal(true)}>
         {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, 1)}
       </svg>
@@ -195,6 +198,23 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   );
 }
 
+function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, fromId: string, toId: string, w: number, h: number) {
+  const isLoop = fromId === 'validator' && toId === 'summarizer';
+  if (isLoop) {
+    const sx = from.x;
+    const sy = from.y - h / 2;
+    const ex = to.x + w / 2;
+    const ey = to.y - h / 2;
+    const my = Math.min(sy, ey) - 24;
+    return { d: `M ${sx},${sy} C ${sx},${my} ${ex},${my} ${ex},${ey}`, marker: 'url(#arrowYellow)', color: '#FBBF24', dashed: true };
+  }
+  const sx = from.x + w / 2;
+  const sy = from.y;
+  const ex = to.x - w / 2;
+  const ey = to.y;
+  return { d: `M ${sx},${sy} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false };
+}
+
 function svgGraph(
   graph: WorkflowGraph,
   nodePositions: Record<string, { x: number; y: number }>,
@@ -217,16 +237,15 @@ function svgGraph(
       {graph.edges.map((e, i) => {
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
-        const isLoop = e.from === 'validator' && e.to === 'summarizer';
+        const ep = edgePath(from, to, e.from, e.to, nodeW, nodeH);
         const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2;
+        const midY = Math.min(from.y, to.y) - 12;
         return (
           <g key={i}>
-            <line x1={from.x + nodeW / 2} y1={from.y} x2={to.x - nodeW / 2} y2={to.y}
-              stroke={isLoop ? '#FBBF24' : '#6B7280'} strokeWidth={edgeW}
-              strokeDasharray={isLoop ? '4,3' : 'none'}
-              markerEnd={isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)'} />
-            {e.label && <text x={midX} y={midY - 10} textAnchor="middle" fill="#9CA3AF" fontSize={labelSize}>{e.label}</text>}
+            <path d={ep.d} fill="none" stroke={ep.color} strokeWidth={edgeW}
+              strokeDasharray={ep.dashed ? '4,3' : 'none'}
+              markerEnd={ep.marker} />
+            {e.label && <text x={midX} y={midY} textAnchor="middle" fill="#9CA3AF" fontSize={labelSize}>{e.label}</text>}
           </g>
         );
       })}
