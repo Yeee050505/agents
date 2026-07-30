@@ -232,14 +232,14 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const color = EDGE_COLORS[style || 'default'] || EDGE_COLORS.default;
   const marker = isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)';
 
-  // Loop: validator → summarizer — 标准矩形回环（绕下→水平→上拐→接入摘要左缘）
+  // Loop: validator → summarizer — 标准矩形闭环（竖边对齐汇聚节点 x=293 与校验 x=530）
   if (isLoop) {
     const sx = from.x;
     const sy = from.y + h / 2;
     const ex = to.x - w / 2;
     const ey = to.y;
     const by = sy + 35;
-    const leftX = 300;
+    const leftX = 293;
     const pts = [
       { x: sx, y: sy }, { x: sx, y: by }, { x: leftX, y: by }, { x: leftX, y: ey }, { x: ex, y: ey },
     ];
@@ -251,30 +251,32 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const ex = to.x - w / 2;
   const ey = to.y;
 
-  // Branch: 两条独立并行出线（无共享段）
+  // Branch: 规划垂直下至 y=60 分叉，两条独立水平线分别接入检索/工具左侧中点
   if (style === 'branch') {
     if (toId === 'retriever') {
       const pts = [
-        { x: sx, y: sy }, { x: 105, y: sy }, { x: 105, y: 53 }, { x: ex, y: 53 },
+        { x: sx, y: sy }, { x: sx, y: 60 }, { x: ex, y: 60 },
       ];
-      return { d: roundPath(pts, R), marker, color, dashed: false, lx: 100, ly: sy - 8 };
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: sx - 6, ly: sy - 6 };
     }
-    // tool
+    // tool: 在 y=60 继续下至 y=70，再水平接入工具
     const pts = [
-      { x: sx, y: sy }, { x: 190, y: sy }, { x: 190, y: 77 }, { x: ex, y: 77 },
+      { x: sx, y: sy }, { x: sx, y: 70 }, { x: ex, y: 70 },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: 188, ly: sy - 8 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: sx - 6, ly: sy - 6 };
   }
 
-  // Merge: 两条汇聚线右端汇合于一点
+  // Merge: 检索右端下绕至 y=80，工具右端水平至 x=293 汇合
   if (style === 'merge') {
     const cx = 293;
     if (fromId === 'retriever') {
+      // 检索下绕至框底部 y=80，水平到汇合点，不下穿工具
       const pts = [
-        { x: sx, y: sy }, { x: sx, y: 25 }, { x: cx, y: 25 }, { x: cx, y: ey }, { x: ex, y: ey },
+        { x: sx, y: sy }, { x: sx, y: 80 }, { x: cx, y: 80 }, { x: cx, y: ey }, { x: ex, y: ey },
       ];
-      return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: 21 };
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: 56 };
     }
+    // 工具水平直连汇合点
     const pts = [
       { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ey }, { x: ex, y: ey },
     ];
