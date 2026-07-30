@@ -14,3 +14,5 @@ dist/
 lora_adapters/
 report.html
 resp*.json
+data/checkpoints/
+*.tsbuildinfo
