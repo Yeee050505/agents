@@ -233,8 +233,6 @@ async def harness_recycle_bin():
 async def harness_session_checkpoints(session_id: str, include_deleted: bool = False):
     from app.harness import list_session_snapshots
     snaps = list_session_snapshots(session_id, include_deleted=include_deleted)
-    if not snaps:
-        return _err(404, "该会话无检查点")
     return _ok({"session_id": session_id, "snapshots": snaps})
 
 

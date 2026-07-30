@@ -21,6 +21,8 @@ EXTRACT_PROMPT = """从以下对话中提取值得长期记住的信息。
 3. 多条用 | 分隔"""
 
 
+_EMBED_FAILED = "_EMBED_FAILED"
+
 class LongTermMemory:
     def __init__(self, dim: int = 768, top_k: int = 3):
         self._memories: List[dict] = []
@@ -31,14 +33,20 @@ class LongTermMemory:
 
     @property
     def _model(self):
-        if self._embedder is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                self._embedder = SentenceTransformer("BAAI/bge-base-zh-v1.5", device="cpu")
-                logger.info("LongTermMemory: BGE embedder loaded")
-            except Exception as e:
-                logger.warning(f"LongTermMemory: embedder failed: {e}")
-        return self._embedder
+        if self._embedder is _EMBED_FAILED:
+            return None
+        if self._embedder is not None:
+            return self._embedder
+        try:
+            from app.config import settings
+            from sentence_transformers import SentenceTransformer
+            model_name = settings.EMBED_LOCAL_MODEL or "BAAI/bge-base-zh-v1.5"
+            self._embedder = SentenceTransformer(model_name, device="cpu")
+            logger.info(f"LongTermMemory: embedder loaded ({model_name})")
+        except Exception as e:
+            logger.warning(f"LongTermMemory: embedder failed ({e}) — falling back to zero vectors")
+            self._embedder = _EMBED_FAILED
+        return None if self._embedder is _EMBED_FAILED else self._embedder
 
     def _load(self):
         if MEMORY_FILE.exists():
