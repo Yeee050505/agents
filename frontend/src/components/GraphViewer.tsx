@@ -88,6 +88,18 @@ export default function GraphViewer({ sessionId }: Props) {
     }));
   };
 
+  const nodeStatusSummary = () => {
+    for (const n of ['validator', 'summarizer', 'retriever_tool', 'planner'] as const) {
+      const s = nodeStatus[n];
+      if (s === 'running') return { color: 'bg-yellow-400', text: '运行中' };
+      if (s === 'error') return { color: 'bg-red-400', text: '异常' };
+      if (s === 'failed') return { color: 'bg-orange-400', text: '待干预' };
+      if (s === 'done') return { color: 'bg-green-400', text: '已完成' };
+    }
+    return { color: 'bg-gray-500', text: '空闲' };
+  };
+  const status = nodeStatusSummary();
+
   if (!graph) {
     return <p className="text-gray-600 text-xs">加载流程图...</p>;
   }
@@ -96,13 +108,11 @@ export default function GraphViewer({ sessionId }: Props) {
 
   return (
     <>
-      {/* Small thumbnail — click to enlarge */}
-      <svg viewBox="0 0 720 240" className="w-full h-auto max-h-32 cursor-pointer hover:opacity-80 transition-opacity"
+      <svg viewBox="38 8 660 155" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
         onClick={() => setShowModal(true)}>
-        {renderGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1)}
+        {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1)}
       </svg>
 
-      {/* Fullscreen modal */}
       {showModal && (
         <GraphModal graph={graph}
           nodeStatus={nodeStatus} highlightNode={highlightNode}
@@ -117,11 +127,11 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   graph: WorkflowGraph; nodeStatus: Record<string, NodeStatus>; highlightNode: string;
   hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
 }) {
-  const scale = 2;
+  const [zoom, setZoom] = useState(2);
   const nodePositions = calcPositions(graph);
   const scaledPos: Record<string, { x: number; y: number }> = {};
   for (const [k, v] of Object.entries(nodePositions)) {
-    scaledPos[k] = { x: v.x * scale, y: v.y * scale };
+    scaledPos[k] = { x: v.x * zoom, y: v.y * zoom };
   }
 
   useEffect(() => {
@@ -132,28 +142,49 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 shadow-2xl max-w-[90vw] max-h-[90vh]"
+      <div className="bg-gray-900 rounded-xl p-6 border border-gray-700 shadow-2xl w-[95vw] h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-300">Agent 流程图</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <h3 className="text-base font-semibold text-gray-200">Agent 流程图</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
         </div>
-        <svg viewBox={`0 0 ${720 * scale} ${240 * scale}`} className="w-full max-w-5xl">
-          {renderGraph(graph, scaledPos, nodeStatus, highlightNode, hasSnapshot, handleDotClick, scale)}
-        </svg>
-        <div className="flex gap-4 mt-3 text-xs text-gray-500">
-          <span><span className="inline-block w-3 h-3 rounded bg-gray-500 mr-1" /> 空闲</span>
-          <span><span className="inline-block w-3 h-3 rounded bg-yellow-400 mr-1" /> 运行中</span>
-          <span><span className="inline-block w-3 h-3 rounded bg-green-400 mr-1" /> 完成</span>
-          <span><span className="inline-block w-3 h-3 rounded bg-red-400 mr-1" /> 错误</span>
-          <span><span className="inline-block w-3 h-3 rounded bg-blue-500 mr-1" /> 有检查点</span>
+        {/* Zoom slider */}
+        <div className="flex items-center gap-3 mb-3 shrink-0">
+          <span className="text-[10px] text-gray-500 w-6 text-right">1x</span>
+          <input type="range" min={1} max={4} step={0.1} value={zoom}
+            onChange={e => setZoom(parseFloat(e.target.value))}
+            className="flex-1 accent-blue-500 h-1 cursor-pointer" />
+          <span className="text-[10px] text-gray-500 w-6">4x</span>
+          <span className="text-xs text-gray-400 font-mono w-8 text-right">{zoom.toFixed(1)}x</span>
+        </div>
+        <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto">
+          <svg viewBox={`0 0 ${720 * zoom} ${240 * zoom}`}
+            className="max-w-full max-h-full shrink-0"
+            preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <marker id="arrowGray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L10,5 L0,10 Z" fill="#6B7280" />
+              </marker>
+              <marker id="arrowYellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
+              </marker>
+            </defs>
+            {svgGraph(graph, scaledPos, nodeStatus, highlightNode, hasSnapshot, handleDotClick, zoom)}
+          </svg>
+        </div>
+        <div className="flex gap-5 mt-3 shrink-0 text-xs text-gray-500 justify-center">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-500" /> 空闲</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-400" /> 运行中</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400" /> 完成</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400" /> 错误</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500" /> 有检查点</span>
         </div>
       </div>
     </div>
   );
 }
 
-function renderGraph(
+function svgGraph(
   graph: WorkflowGraph,
   nodePositions: Record<string, { x: number; y: number }>,
   nodeStatus: Record<string, NodeStatus>,
@@ -187,15 +218,6 @@ function renderGraph(
           </g>
         );
       })}
-      <defs>
-        <marker id="arrowGray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-          <path d="M0,0 L10,5 L0,10 Z" fill="#6B7280" />
-        </marker>
-        <marker id="arrowYellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-          <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
-        </marker>
-      </defs>
-
       {graph.nodes.map(n => {
         const pos = nodePositions[n.id] || { x: 0, y: 0 };
         const status = nodeStatus[n.id] || 'idle';
