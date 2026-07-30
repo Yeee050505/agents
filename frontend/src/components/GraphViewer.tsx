@@ -11,10 +11,10 @@ const NODE_COLORS: Record<NodeStatus, string> = {
 };
 
 const LAYER: Record<string, number> = {
-  planner: 0, retriever_tool: 1, summarizer: 2, validator: 3,
+  planner: 0, retriever: 1, tool: 1, summarizer: 2, validator: 3,
 };
-const NODE_BY_PHASE: Record<number, string> = { 0: 'planner', 1: 'planner', 2: 'retriever_tool', 3: 'summarizer', 4: 'validator' };
-const PHASE_BY_NODE: Record<string, number> = { planner: 1, retriever_tool: 2, summarizer: 3, validator: 4 };
+const NODE_BY_PHASE: Record<number, string> = { 0: 'planner', 1: 'planner', 2: 'tool', 3: 'summarizer', 4: 'validator' };
+const PHASE_BY_NODE: Record<string, number> = { planner: 1, retriever: 2, tool: 2, summarizer: 3, validator: 4 };
 
 interface Props {
   sessionId?: string;
@@ -24,7 +24,7 @@ function calcPositions(graph: WorkflowGraph) {
   const pos: Record<string, { x: number; y: number }> = {};
   graph.nodes.forEach(n => {
     const layer = LAYER[n.id] ?? 99;
-    pos[n.id] = { x: 50 + layer * 160, y: 50 + (n.id === 'retriever_tool' ? 80 : 0) };
+    pos[n.id] = { x: 50 + layer * 160, y: 50 + ((n.id === 'retriever' || n.id === 'tool') ? 80 : 0) };
   });
   pos.__end__ = { x: 50 + 4 * 160, y: 50 };
   return pos;
@@ -89,7 +89,8 @@ export default function GraphViewer({ sessionId }: Props) {
   };
 
   const nodeStatusSummary = () => {
-    for (const n of ['validator', 'summarizer', 'retriever_tool', 'planner'] as const) {
+    const ids = ['validator', 'summarizer', 'retriever', 'tool', 'planner'] as const;
+    for (const n of ids) {
       const s = nodeStatus[n];
       if (s === 'running') return { color: 'bg-yellow-400', text: '运行中' };
       if (s === 'error') return { color: 'bg-red-400', text: '异常' };
