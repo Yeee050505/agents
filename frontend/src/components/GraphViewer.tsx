@@ -186,7 +186,10 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
             </svg>
           </div>
         </div>
-        <div className="flex gap-5 mt-3 shrink-0 text-xs text-gray-500 justify-center">
+        <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 shrink-0 text-[10px] text-gray-500 justify-center">
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-green-400" /> 并行扇出</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-purple-400" /> 并行汇聚</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-yellow-400" /> 条件重写</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-500" /> 空闲</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-400" /> 运行中</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400" /> 完成</span>
@@ -282,8 +285,27 @@ function svgGraph(
   const dotR = 6 * scale;
   const labelSize = 8 * scale;
 
+  const retrieverPos = nodePositions['retriever'];
+  const toolPos = nodePositions['tool'];
+
   return (
     <g>
+      {/* Parallel execution region */}
+      {retrieverPos && toolPos && (() => {
+        const rx = retrieverPos.x - nodeW / 2 - 8;
+        const ry = Math.min(retrieverPos.y, toolPos.y) - nodeH / 2 - 8;
+        const rw = (toolPos.x + nodeW / 2 + 8) - rx;
+        const rh = Math.max(retrieverPos.y, toolPos.y) + nodeH / 2 + 8 - ry;
+        return (
+          <g>
+            <rect x={rx} y={ry} width={rw} height={rh} rx={10}
+              fill="none" stroke="#10B981" strokeWidth={1}
+              strokeDasharray="4,3" opacity={0.5} />
+            <text x={rx + 6} y={ry - 4} fill="#10B981" fontSize={9}
+              textAnchor="start" fontWeight={600}>并行执行</text>
+          </g>
+        );
+      })()}
       {graph.edges.map((e, i) => {
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
