@@ -1,131 +1,176 @@
-# GameNexus 游戏RAG问答系统
+# GameNexus 游戏RAG问答系统 — 质量闭环模块
 
-**技术栈**：Python、FastAPI、LangGraph、BM25+jieba、BGE Embedding、DeepSeek LLM、TapTap、React、TypeScript、SSE 流式交互
+**技术栈**：Python、FastAPI、LangGraph、BM25+jieba、DeepSeek LLM、TapTap、React、TypeScript
 
 ---
 
-## S 情境
+## 概述
 
-开发过程中遇到了以下实际问题需要解决：
+这是 GameNexus 系统的质量闭环子模块，在已有 RAG 问答架构之上新增五层防护机制，解决 LLM 输出的幻觉、事实错误、不可追溯问题。
 
-1. **数据源不可用** — 部分海外游戏 API 从国内直连超时、丢包，甚至 SNI 阻断，导致工具 Agent 无法获取实时游戏数据
-2. **依赖兼容性** — LangGraph 从 0.0.57 升级到 1.2.9，`Annotated[list, operator.add]` reducer 在 `from __future__ import annotations` 下失效，并行扇出状态下冲突
-3. **前后端数据格式脱节** — 后端 `/kb/documents` 返回字段与前端 `KBDocument` 类型不一致，`/rate-limit/stats` 缺少 `llm_pool` 字段，导致前端渲染空白
-4. **LLM 单点故障** — 单 API Key 被限流或超时后全站不可用，缺乏熔断降级机制
-5. **黑盒输出不可控** — 大模型直接输出存在幻觉、捏造数据，用户无法追溯回答来源，也无法干预生成过程
-6. **测试积压** — `needs_realtime_search`、`is_stale_response` 等函数已删除但测试仍未清理；`RAGEngine.search()` 实为同步但测试用 `await` 调用；`format_context` 已不存在
-
-## T 任务
-
-1. **架构建设**：独立完成全栈开发，搭建白盒可观测的多Agent RAG问答架构，打造流程透明、可干预、可追溯的游戏领域智能问答服务。
-2. **精度优化**：针对大模型幻觉、知识库滞后痛点，设计双通道检索方案，依托多源数据融合提升问答精准度与时效性。
-3. **可控可视化建设**：打破传统黑盒AI问答弊端，搭建全链路白盒可视化体系，配套人工审批、容错重试机制，解决AI输出不可控、流程不透明问题。
-4. **工程落地**：实现流式对话、智能记忆、状态监控等能力，保障系统低延迟、高并发稳定落地。
-
-## A 行动
-
-核心独立完成架构设计与功能开发，落地多Agent RAG完整解决方案，关键开发动作如下：
-
-1. **多Agent架构搭建**：基于LangGraph构建五节点闭环工作流，采用并行扇出机制同步执行本地检索与TapTap数据拉取，通过状态归约整合多源结果，为所有节点配置异常捕获与自动重试机制，有效规避单节点故障。
-
-2. **双通道检索优化**：设计本地知识库+实时API双检索架构，依托BM25+jieba实现轻量化高速检索，对接TapTap抓取游戏实时评分、价格、简介等数据，弥补静态知识库更新滞后问题，提升问答准确性。
-
-3. **白盒可视化全链路搭建**：摒弃传统大模型黑盒输出模式，自研完整白盒观测体系，通过SVG实时渲染Agent工作流程图，结合SSE流式事件推送，动态展示节点空闲、运行、完成全状态。支持问答步骤、Token输出、暂停报错全流程可视化追溯，搭配核心节点人工审批、内容修改、结果覆盖能力，实现AI生成过程**全透明、可监控、可干预**。
-
-4. **服务稳定性优化**：搭建大模型多密钥资源池，配置熔断退避策略解决接口限流、超时问题；设计短时会话记忆+BGE向量长时记忆双层架构，显著提升多轮对话连贯性。
-
-## R 成果
-
-创新性落地白盒可观测RAG方案，彻底解决传统AI问答黑盒不可控、无法追溯的痛点，有效抑制模型幻觉、弥补知识库滞后问题。性能表现优异：本地检索耗时低至**5ms**，系统冷启动**＜1s**，单服务QPS达**851**。依托白盒可视化链路、人工干预机制、熔断重试策略，实现问答流程透明化、结果可纠错、服务高可用，成功落地高性能、可观测、可管控的游戏领域智能问答系统。
-
-## 量化成果
-
-| 指标 | 数值 |
-|---|---|
-| 首字输出时延 | 3.5s（受限于LLM API全量返回） |
-| BM25检索 | 5ms |
-| 健康检查QPS | 851（单worker） |
-| 系统冷启动 | <1s |
-| 知识库规模 | 19 chunks / 4 文档 |
-| 系统自检 | 7 项全覆盖（LLM池/知识库/BM25/长短记忆/MCP/配置） |
-
-## 架构概览
+## 五层防护架构
 
 ```
-用户 → FastAPI → LangGraph Orchestrator ──→ Planner
-                                        │
-                               ┌────────┴────────┐
-                               ▼                 ▼
-                          Retriever          ToolAgent
-                        (BM25+jieba 知识库)  (TapTap)
-                               │                 │
-                               └────────┬────────┘
-                                        ▼
-                                    Summarizer
-                                        │
-                                        ▼
-                                    Validator (幻觉检测)
-                                        │
-                           ┌────────────┼────────────┐
-                           ▼            ▼            ▼
-                       通过 → 输出   触发重写 → 回到Summarizer
+用户输入 ──→ 第一层：事实白库（关键词匹配命中直接返回）
+             │ 未命中
+             ▼
+         ┌── Retriever (BM25) ── ToolAgent (TapTap) ──┐
+         │             第二层：交叉验证                 │
+         │   BM25 vs TapTap 双通道互验，单通道标黄     │
+         └──────────────────┬──────────────────────────┘
+                            ▼
+                  第三层：事实抽取校验
+                  从 draft 提取数值/名称，对比参考源
+                  发现矛盾 → 自动重写
+                            ▼
+                        Summarizer
+                            ▼
+                        Validator
+                            ▼
+                        输出 ──── 用户反馈循环 ────┐
+                            ▲                      │
+                            └── 第四层：反馈闭环 ──┘
+                                分级(1-5) → 过滤 → AI审核 → 权重调整
+
+             第五层：监控与回滚
+             权重时间衰减(30天半衰期) + 变更历史可回滚
 ```
 
-## API端点
+## 模块详解
 
-| 端点 | 说明 |
-|---|---|
-| `GET /health` | 健康检查 |
-| `POST /api/v1/chat` | 同步问答 |
-| `POST /api/v1/chat/stream` | SSE标准流式 |
-| `POST /api/v1/chat/flow` | SSE全链路流式（step/token/pause/done/error） |
-| `POST /api/v1/chat/resume` | 人工审批恢复 |
-| `GET /api/v1/graph/workflow` | 流程图节点边定义 |
-| `GET /api/v1/system/self-check` | 全组件自检 |
-| `GET /api/v1/kb/documents` | 知识库文档列表 |
-| `POST /api/v1/kb/upload` | 上传文档 |
-| `DELETE /api/v1/kb/documents/{id}` | 删除文档 |
-| `GET /api/v1/rate-limit/stats` | 限流熔断状态 |
-| `POST /api/v1/auth/login` | 登录 |
-| `POST /api/v1/auth/register` | 注册 |
-| `GET /api/v1/lora/status` | LoRA状态 |
-| `GET /api/v1/mcp/tools` | MCP工具列表 |
+### 1. 事实白库 (`app/quality/whitelist.py`)
 
-## 快速开始
+高频错误问题的固定标准答案库，检索命中直接覆盖 LLM 输出。
+
+- 匹配策略：完全匹配 → 关键词匹配 → 模糊匹配（字符重叠度 > 80%）
+- 集成位置：`orchestrator.run_stream()` 入口处优先拦截
+- 数据持久化：`data/quality/white_list.json`
+
+### 2. 交叉验证 (`app/quality/cross_validate.py`)
+
+BM25（关键词）与 TapTap（实时数据）双通道互验：
+
+- 内容同时在两路出现 → `cross_validated`，置信度 `high`
+- 仅 BM25 或仅 Tool 出现 → `bm25_only` / `tool_only`，置信度 `low`
+- 集成位置：`summarizer.run()` 素材拼装时标注数据可信度
+
+### 3. 事实抽取校验 (`app/quality/extractor.py`)
+
+从生成草稿中自动提取关键信息并验证：
+
+- 抽取类型：价格（元/美元）、评分（分/星）、年份、百分比、数字、中文书名、英文名
+- 验证方式：提取 draft 中的事实 → 在参考素材中搜索对应 → 未找到则标记为异常
+- 集成位置：`summarizer.run()` 生成 draft 后自动校验，发现问题追加修正指令
+
+### 4. 用户反馈闭环 (`app/quality/feedback.py`)
+
+全链路反馈处理系统：
+
+- **分级机制**：1-2分负面 / 3分中性 / 4-5分正面
+- **自动过滤**：毒性内容 / PII 个人信息 / 重复反馈（1h窗口）
+- **AI预审核**：LLM-as-a-Judge 评估反馈内容风险（low/medium/high）
+- **自动修正**：
+  - 正面反馈 → 提升对应 chunk 权重（+0.1）
+  - 负面反馈 → 降低对应 chunk 权重（-0.2）+ 白库新增正确条目
+  - 高风险内容 → 标记待人工审核
+- **数据持久化**：`data/quality/feedback_log.jsonl`
+
+### 5. 权重管理 (`app/quality/weight_manager.py`)
+
+chunk 级别的检索权重动态调节：
+
+| 操作 | 效果 |
+|------|------|
+| 正面反馈 | 权重 +0.1 |
+| 负面反馈 | 权重 -0.2 |
+| 权重范围 | 0.0 ~ 2.0（默认 1.0） |
+| 时间衰减 | 30 天半衰期指数衰减趋近 1.0 |
+| 回滚能力 | 按分钟回滚所有权重变更 |
+- 集成位置：`RAGEngine.search()` 中 `score *= weight`
+
+## API 端点
+
+### 事实白库
+
+```
+GET    /api/v1/quality/whitelist      # 列表
+POST   /api/v1/quality/whitelist      # 新增 {question, answer, keywords}
+DELETE /api/v1/quality/whitelist/{id} # 删除
+```
+
+### 用户反馈
+
+```
+POST  /api/v1/quality/feedback                # 提交反馈（自动过滤+AI审核）
+GET   /api/v1/quality/feedback?status=        # 列表（可选按状态筛选）
+POST  /api/v1/quality/feedback/{id}/review    # 人工审核 {action, note}
+```
+
+### 权重管理
+
+```
+GET   /api/v1/quality/weights                 # 列表
+POST  /api/v1/quality/weights/rollback        # 回滚 {minutes: 30}
+```
+
+### 其他
+
+```
+GET   /api/v1/quality/cross-validate  # 交叉验证统计
+GET   /api/v1/quality/stats           # 查询统计
+GET   /api/v1/quality/records         # 查询记录
+```
+
+## 反馈处理流程
+
+```
+用户提交(评分+纠错内容)
+  │
+  ▼
+第一层过滤：毒性检测 → 敏感词拦截
+           PII检测  → 个人信息拦截
+           重复检测  → 1h窗口去重
+  │
+  ▼
+评分判断
+  ├─ 3分(中性) → 仅记录日志，结束
+  ├─ 4-5分(正面) → 提升权重(+0.1)，结束
+  └─ 1-2分(负面) → 检查是否补充错误点
+       ├─ 未补充 → 标记待补充，结束
+       └─ 已补充 → AI预审核(LLM评估风险)
+            ├─ 高风险 → 人工审核队列
+            └─ 低风险 → 降权(-0.2) + 白库新增正确条目
+```
+
+## 快速调试
 
 ```bash
-# 安装后端依赖
-pip install -r requirements.txt
+# 新增白库条目
+curl -X POST http://localhost:8000/api/v1/quality/whitelist \
+  -H "Content-Type: application/json" \
+  -d '{"question":"黑神话悟空多少钱","answer":"268元","keywords":["黑神话","价格"]}'
 
-# 安装前端依赖
-cd frontend && npm install
+# 提交反馈
+curl -X POST http://localhost:8000/api/v1/quality/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"query":"黑神话悟空评分","answer":"10分","score":2,"error_points":"分数不对","correct_answer":"IGN 8分"}'
 
-# 环境变量（复制后修改）
-# LLM_API_KEYS=sk-xxx,sk-yyy
-# GLOBAL_RATE=50
+# 查看权重
+curl http://localhost:8000/api/v1/quality/weights
 
-# 启动服务
-uvicorn main:app --reload --port 8000
-
-# 前端开发模式（另开终端）
-cd frontend && npm run dev
+# 回滚30分钟内权重变更
+curl -X POST http://localhost:8000/api/v1/quality/weights/rollback \
+  -H "Content-Type: application/json" \
+  -d '{"minutes":30}'
 ```
-
-## CI/CD
-
-GitHub Actions 自动流水线（`.github/workflows/ci.yml`）：
-
-- **backend** — ruff lint + pytest（10 个测试）
-- **frontend** — tsc 类型检查 + vite 构建
 
 ## 环境变量
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
-| `LLM_API_KEYS` | DeepSeek API Key列表（逗号分隔） | `sk-***` |
+| `LLM_API_KEYS` | DeepSeek API Key列表 | `sk-***` |
 | `LLM_MODEL` | 模型名称 | `deepseek-v4-flash` |
 | `LLM_BASE_URL` | API地址 | `https://api.deepseek.com/v1` |
-| `MAX_HISTORY` | 短时记忆轮数 | `10` |
-| `GLOBAL_RATE` | 全局速率限制 | `50` |
 | `TAP_API_TIMEOUT` | TapTap 请求超时（秒） | `8` |
-| `TAP_PROXY` | TapTap 代理地址 | `空` |
+| `TAP_PROXY` | TapTap 代理地址 | 空 |
+| `EMBED_LOCAL_MODEL` | 本地嵌入模型路径 | `BAAI/bge-base-zh-v1.5` |

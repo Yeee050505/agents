@@ -242,6 +242,7 @@ async def run_stream(question: str, session_id: str = "", request_id: str = "", 
     else:
         if restored:
             logger.info(f"Question mismatch, starting fresh: got '{question}', expected '{restored.get('question')}'")
+            delete_checkpoint(session_id)
         history = short_memory.get_history(session_id)
         memories = long_memory.retrieve(question)
         context_ctx = _build_context(history, memories)

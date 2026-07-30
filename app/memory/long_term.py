@@ -39,10 +39,21 @@ class LongTermMemory:
             return self._embedder
         try:
             from app.config import settings
-            from sentence_transformers import SentenceTransformer
             model_name = settings.EMBED_LOCAL_MODEL or "BAAI/bge-base-zh-v1.5"
+
+            # Quick connectivity check — skip download if HuggingFace unreachable
+            import urllib.request
+            import urllib.error
+            host = model_name.split("/")[0] if "/" in model_name else "huggingface.co"
+            req = urllib.request.Request(f"https://{host}", method="HEAD")
+            urllib.request.urlopen(req, timeout=3)
+
+            from sentence_transformers import SentenceTransformer
             self._embedder = SentenceTransformer(model_name, device="cpu")
             logger.info(f"LongTermMemory: embedder loaded ({model_name})")
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as conn_err:
+            logger.warning(f"LongTermMemory: {host} unreachable ({conn_err}) — falling back to zero vectors")
+            self._embedder = _EMBED_FAILED
         except Exception as e:
             logger.warning(f"LongTermMemory: embedder failed ({e}) — falling back to zero vectors")
             self._embedder = _EMBED_FAILED
