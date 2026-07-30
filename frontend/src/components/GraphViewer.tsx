@@ -214,14 +214,14 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const color = EDGE_COLORS[style || 'default'] || EDGE_COLORS.default;
   const marker = isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)';
 
-  // Loop: validator → summarizer — 标准矩形闭环（竖边对齐汇聚节点 x=293 与校验 x=530）
+  // Loop: validator → summarizer — 标准矩形闭环（竖边对齐汇聚节点 x=305 与校验 x=530）
   if (isLoop) {
     const sx = from.x;
     const sy = from.y + h / 2;
     const ex = to.x - w / 2;
     const ey = to.y;
     const by = sy + 35;
-    const leftX = 293;
+    const leftX = 305;
     const pts = [
       { x: sx, y: sy }, { x: sx, y: by }, { x: leftX, y: by }, { x: leftX, y: ey }, { x: ex, y: ey },
     ];
@@ -248,9 +248,9 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
     return { d: roundPath(pts, R), marker, color, dashed: false, lx: sx - 6, ly: sy - 6 };
   }
 
-  // Merge: 检索右端下绕至 y=80，工具右端水平至 x=293 汇合
+  // Merge: 检索右端下绕至 y=80，工具右端水平至 x=305 汇合
   if (style === 'merge') {
-    const cx = 293;
+    const cx = 305;
     if (fromId === 'retriever') {
       // 检索下绕至框底部 y=80，水平到汇合点，不下穿工具
       const pts = [
@@ -299,7 +299,7 @@ function svgGraph(
       {retrieverPos && toolPos && (() => {
         const rx = retrieverPos.x - nodeW / 2 - 8;
         const ry = Math.min(retrieverPos.y, toolPos.y) - nodeH / 2 - 8;
-        const rw = (toolPos.x + nodeW / 2 + 8) - rx;
+        const rw = (toolPos.x + nodeW / 2 + 20) - rx;
         const rh = Math.max(retrieverPos.y, toolPos.y) + nodeH / 2 + 8 - ry;
         return (
           <g>
