@@ -60,6 +60,7 @@ export interface GraphEdge {
   to: string;
   label: string;
   condition?: string;
+  style?: string;
 }
 
 export interface WorkflowGraph {

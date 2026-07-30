@@ -216,26 +216,31 @@ function roundPath(pts: { x: number; y: number }[], r: number): string {
   return d;
 }
 
-function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, fromId: string, toId: string, w: number, h: number) {
+const EDGE_COLORS: Record<string, string> = {
+  branch: '#10B981',   // 扇出绿
+  merge: '#8B5CF6',    // 汇聚紫
+  loop: '#FBBF24',     // 循环黄
+  default: '#6B7280',  // 默认灰
+};
+
+function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, fromId: string, toId: string, w: number, h: number, style?: string) {
   const R = 6;
+  const isLoop = style === 'loop';
+  const color = EDGE_COLORS[style || 'default'] || EDGE_COLORS.default;
+  const marker = isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)';
 
   // Loop: validator → summarizer —绕下穿行，从左侧接入摘要左边缘（箭头朝右）
-  if (fromId === 'validator' && toId === 'summarizer') {
+  if (isLoop) {
     const sx = from.x;
     const sy = from.y + h / 2;
     const ex = to.x - w / 2;
     const ey = to.y;
     const by = sy + 35;
-    // 绕过 tool 右缘(285)，在 300 处上拐，从左侧向右接入摘要左边缘
     const leftX = 300;
     const pts = [
-      { x: sx, y: sy },
-      { x: sx, y: by },
-      { x: leftX, y: by },
-      { x: leftX, y: ey },
-      { x: ex, y: ey },
+      { x: sx, y: sy }, { x: sx, y: by }, { x: leftX, y: by }, { x: leftX, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker: 'url(#arrowYellow)', color: '#FBBF24', dashed: true, lx: (sx + leftX) / 2, ly: by - 6 };
+    return { d: roundPath(pts, R), marker, color, dashed: true, lx: (sx + leftX) / 2, ly: by - 6 };
   }
 
   const sx = from.x + w / 2;
@@ -243,39 +248,21 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const ex = to.x - w / 2;
   const ey = to.y;
 
-  // Fan-out: planner → retriever / tool (serial dispatch)
-  if (fromId === 'planner' && (toId === 'retriever' || toId === 'tool')) {
-    const bx = 120;
+  // Branch / merge → orthogonal Z 形折线
+  if (style === 'branch' || style === 'merge') {
+    const mid = style === 'branch' ? 120 : 315;
     const pts = [
-      { x: sx, y: sy },
-      { x: bx, y: sy },
-      { x: bx, y: ey },
-      { x: ex, y: ey },
+      { x: sx, y: sy }, { x: mid, y: sy }, { x: mid, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: bx + 10, ly: sy - 8 };
-  }
-
-  // Fan-in: retriever / tool → summarizer
-  if ((fromId === 'retriever' || fromId === 'tool') && toId === 'summarizer') {
-    const cx = 315;
-    const pts = [
-      { x: sx, y: sy },
-      { x: cx, y: sy },
-      { x: cx, y: ey },
-      { x: ex, y: ey },
-    ];
-    return { d: roundPath(pts, R), marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: (sx + ex) / 2, ly: sy - 8 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: mid + 10, ly: sy - 8 };
   }
 
   // Default: orthogonal L-shape with rounded corner
   const mx = (sx + ex) / 2;
   const pts = [
-    { x: sx, y: sy },
-    { x: mx, y: sy },
-    { x: mx, y: ey },
-    { x: ex, y: ey },
+    { x: sx, y: sy }, { x: mx, y: sy }, { x: mx, y: ey }, { x: ex, y: ey },
   ];
-  return { d: roundPath(pts, R), marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: mx, ly: sy - 8 };
+  return { d: roundPath(pts, R), marker, color, dashed: false, lx: mx, ly: sy - 8 };
 }
 
 function svgGraph(
@@ -300,7 +287,7 @@ function svgGraph(
       {graph.edges.map((e, i) => {
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
-        const ep = edgePath(from, to, e.from, e.to, nodeW, nodeH);
+        const ep = edgePath(from, to, e.from, e.to, nodeW, nodeH, e.style);
         return (
           <g key={i}>
             <path d={ep.d} fill="none" stroke={ep.color} strokeWidth={edgeW}
