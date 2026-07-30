@@ -583,8 +583,8 @@ WORKFLOW_GRAPH = {
     "edges": [
         {"from": "planner", "to": "retriever", "label": "并行扇出", "style": "branch"},
         {"from": "planner", "to": "tool", "label": "并行扇出", "style": "branch"},
-        {"from": "retriever", "to": "summarizer", "label": "汇入", "style": "merge"},
-        {"from": "tool", "to": "summarizer", "label": "汇入", "style": "merge"},
+        {"from": "retriever", "to": "summarizer", "label": "并行汇聚", "style": "merge"},
+        {"from": "tool", "to": "summarizer", "label": "并行汇聚", "style": "merge"},
         {"from": "summarizer", "to": "validator", "label": "送检", "style": ""},
         {"from": "validator", "to": "summarizer", "label": "条件重写 ↺（校验失败触发迭代重生成）", "condition": "validation_ok=false", "style": "loop"},
         {"from": "validator", "to": "__end__", "label": "输出（校验通过）", "condition": "validation_ok=true", "style": ""},
