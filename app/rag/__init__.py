@@ -144,17 +144,24 @@ class RAGEngine:
         bm25 = _get_bm25(self._chunks)
         tokenized_q = list(jieba.cut(query))
         scores = bm25.get_scores(tokenized_q)
-        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+        # Apply weights
+        from app.quality.weight_manager import weight_manager
+        weighted = []
+        for i, score in enumerate(scores):
+            w = weight_manager.get_weight(self._chunks[i]["doc_id"], self._chunks[i]["chunk_idx"])
+            weighted.append((i, score * w))
+        ranked = sorted(weighted, key=lambda x: x[1], reverse=True)
         top_k = min(k, len(ranked))
         hits = []
         for i, score in ranked[:top_k]:
             if score <= 0:
                 continue
+            c = self._chunks[i]
             hits.append({
-                "content": self._chunks[i]["content"][:800],
-                "file_name": self._chunks[i]["file_name"],
-                "chunk_idx": self._chunks[i]["chunk_idx"],
-                "doc_id": self._chunks[i]["doc_id"],
+                "content": c["content"][:800],
+                "file_name": c["file_name"],
+                "chunk_idx": c["chunk_idx"],
+                "doc_id": c["doc_id"],
                 "score": round(float(score), 4),
             })
         return hits

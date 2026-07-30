@@ -215,6 +215,92 @@ async def quality_records(limit: int = 50, offset: int = 0):
     return _ok({"records": records, "total": len(records)})
 
 
+@router.get("/quality/whitelist")
+async def quality_whitelist():
+    from app.quality.whitelist import whitelist
+    return _ok({"entries": whitelist.list_all(), "total": whitelist.count()})
+
+
+@router.post("/quality/whitelist")
+async def quality_whitelist_add(body: dict):
+    from app.quality.whitelist import whitelist
+    entry = whitelist.add(
+        question=body.get("question", ""),
+        answer=body.get("answer", ""),
+        keywords=body.get("keywords"),
+        source=body.get("source", "manual"),
+    )
+    return _ok(entry.to_dict())
+
+
+@router.delete("/quality/whitelist/{entry_id}")
+async def quality_whitelist_delete(entry_id: str):
+    from app.quality.whitelist import whitelist
+    ok = whitelist.delete(entry_id)
+    if not ok:
+        return _err(404, "条目不存在")
+    return _ok(msg="已删除")
+
+
+@router.post("/quality/feedback")
+async def quality_feedback_submit(body: dict):
+    from app.quality.feedback import FeedbackRecord, feedback_manager
+    record = FeedbackRecord(
+        query=body.get("query", ""),
+        answer=body.get("answer", ""),
+        score=body.get("score", 3),
+        error_points=body.get("error_points", ""),
+        correct_answer=body.get("correct_answer", ""),
+        request_id=body.get("request_id", ""),
+        session_id=body.get("session_id", ""),
+        user_id=body.get("user_id", ""),
+        ip=body.get("ip", ""),
+    )
+    result = await feedback_manager.submit(record)
+    if result["status"] in ("pending", "ai_reviewed"):
+        return _ok(result, msg=result.get("reason", ""))
+    return _ok(result)
+
+
+@router.get("/quality/feedback")
+async def quality_feedback_list(limit: int = 50, offset: int = 0, status: str = ""):
+    from app.quality.feedback import feedback_manager
+    records = feedback_manager.list_records(limit=limit, offset=offset, status=status)
+    stats = feedback_manager.stats()
+    return _ok({"records": records, "total": stats["total"], "stats": stats})
+
+
+@router.post("/quality/feedback/{record_id}/review")
+async def quality_feedback_review(record_id: str, body: dict):
+    from app.quality.feedback import feedback_manager
+    action = body.get("action", "approve")
+    note = body.get("note", "")
+    ok = await feedback_manager.review(record_id, action, note)
+    if not ok:
+        return _err(404, "反馈记录不存在")
+    return _ok(msg=f"已{action}")
+
+
+@router.get("/quality/weights")
+async def quality_weights():
+    from app.quality.weight_manager import weight_manager
+    return _ok({"weights": weight_manager.get_all_weights(), "history_count": len(weight_manager.get_history())})
+
+
+@router.post("/quality/weights/rollback")
+async def quality_weights_rollback(body: dict):
+    from app.quality.weight_manager import weight_manager
+    minutes = body.get("minutes", 30)
+    count = weight_manager.rollback(minutes=minutes)
+    return _ok({"rolled_back": count}, msg=f"已回滚 {count} 条权重变更")
+
+
+@router.get("/quality/cross-validate")
+async def quality_cross_validate_stats():
+    from app.quality.cross_validate import cross_validator
+    return _ok(cross_validator.stats())
+
+
 # ========== Harness ==========
 
 @router.get("/harness/checkpoints")

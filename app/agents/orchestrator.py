@@ -10,7 +10,7 @@ from app.agents.tool_agent import ToolAgent
 from app.agents.validator import ValidatorAgent
 from app.agents.summarizer import SummarizerAgent
 from app.memory import short_memory, long_memory
-from app.quality import quality_tracker
+from app.quality import quality_tracker, whitelist, cross_validator, fact_extractor
 from app.harness import save_checkpoint, load_checkpoint, delete_checkpoint, compress_context, should_compress
 from app.utils.logger import logger
 
@@ -216,6 +216,16 @@ def _default_state(question: str, session_id: str, request_id: str, human_review
 
 async def run_stream(question: str, session_id: str = "", request_id: str = "", human_review: bool = False):
     quality_tracker.begin(question, "game", request_id=request_id)
+
+    # Check whitelist first — if exact match, return directly
+    wl_match = whitelist.match(question)
+    if wl_match:
+        logger.info(f"Whitelist hit: {wl_match.question[:40]}")
+        for chunk in _chunk(wl_match.answer):
+            yield {"event": "token", "content": chunk}
+        yield {"event": "done", "content": wl_match.answer}
+        _finish({"draft": wl_match.answer, "attempt": 0}, question, session_id, wl_match.answer)
+        return
 
     # Try to resume from checkpoint
     restored = load_checkpoint(session_id) if session_id else None
