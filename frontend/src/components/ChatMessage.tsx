@@ -22,10 +22,10 @@ export default function ChatMessage({ messages, streaming }: Props) {
           <p className="text-gray-400 text-sm mb-6">基于 LangGraph + DeepSeek 构建，支持意图识别、多轮对话、流式输出</p>
           <div className="flex flex-wrap gap-2 justify-center">
             {[
-              { label: '📝 写文案', msg: '帮我写一段小红书文案' },
-              { label: '🔥 热点分析', msg: '分析一下今天的热点话题' },
-              { label: '🎨 生成提示词', msg: '帮我生成一张图片的提示词' },
-              { label: 'ℹ️ 平台介绍', msg: '我想了解这个平台的功能' },
+              { label: '🎮 游戏查询', msg: '查一下黑神话悟空的价格和评分' },
+              { label: '🔍 游戏推荐', msg: '推荐几款好玩的开放世界游戏' },
+              { label: '📝 写文案', msg: '帮我写一段游戏推荐文案' },
+              { label: 'ℹ️ 平台介绍', msg: '这个平台能做什么' },
             ].map(({ label, msg }) => (
               <span key={label} className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-full text-xs cursor-pointer hover:bg-gray-700 transition">{label}</span>
             ))}

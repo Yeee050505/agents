@@ -3,9 +3,9 @@ import json
 from app.agents.base import BaseAgent
 
 TOOL_AGENT_PROMPT = """你是一个游戏数据查询专家。
-调用 Steam API 获取游戏实时动态数据（评分、价格、在线人数、新闻），整理结果。
+调用 TapTap 获取游戏实时动态数据（评分、价格、下载量、简介），整理结果。
 不处理静态行业知识，静态知识由知识库负责。
-返回 JSON 格式：{"tool_results": [合并后的数据文本], "sources": ["steam_api"]}"""
+返回 JSON 格式：{"tool_results": [合并后的数据文本], "sources": ["taptap"]}"""
 
 
 class ToolAgent(BaseAgent):
@@ -21,8 +21,8 @@ class ToolAgent(BaseAgent):
                 data = json.loads(raw)
                 r = data.get("results", "")
                 if r and "未找到" not in r:
-                    all_results.append(f"[SteamAPI] {r}")
-                    sources.append("steam_api")
+                    all_results.append(f"[TapTap] {r}")
+                    sources.append("taptap")
             except (json.JSONDecodeError, TypeError):
                 pass
 

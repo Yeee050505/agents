@@ -48,3 +48,35 @@ export interface ApiResponse<T = unknown> {
   data: T;
   request_id: string;
 }
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  label: string;
+  condition?: string;
+}
+
+export interface WorkflowGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export type NodeStatus = 'idle' | 'running' | 'done' | 'error' | 'failed';
+
+export interface SnapshotInfo {
+  snapshot_id: string;
+  phase: number;
+  node: string;
+  label: string;
+  timestamp: number;
+  tags: string[];
+  status: string;
+  bind_node_id: string;
+  session_id?: string;
+}

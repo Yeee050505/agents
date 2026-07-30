@@ -1,4 +1,4 @@
-import type { ApiResponse, RateLimitStats, MCPTool, KBDocument, LoRAAdapter } from '../types';
+import type { ApiResponse, RateLimitStats, MCPTool, KBDocument, LoRAAdapter, WorkflowGraph } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -81,3 +81,22 @@ export async function uploadKB(file: File): Promise<ApiResponse> {
 // LoRA
 export const getLoRAStatus = () => apiGet<{ available: boolean; device: string; base_model: string; adapters: Record<string, LoRAAdapter> }>('/lora/status');
 export const getLoRAAdapters = () => apiGet<Record<string, LoRAAdapter>>('/lora/adapters');
+
+// Graph workflow
+export const getGraphWorkflow = () => apiGet<WorkflowGraph>('/graph/workflow');
+
+// Flow chat (SSE with step events, supports human_review)
+export function flowChat(message: string, userId?: string | null, sessionId?: string, humanReview = false): Promise<Response> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(API_BASE + '/chat/flow', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message, user_id: userId, session_id: sessionId, human_review: humanReview }),
+  });
+}
+
+// Human review resume
+export const resumeChat = (requestId: string, action: string, feedback = '') =>
+  apiPost('/chat/resume', { request_id: requestId, action, feedback });

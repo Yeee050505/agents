@@ -11,6 +11,7 @@ from app.agents.validator import ValidatorAgent
 from app.agents.summarizer import SummarizerAgent
 from app.memory import short_memory, long_memory
 from app.quality import quality_tracker
+from app.harness import save_checkpoint, load_checkpoint, delete_checkpoint, compress_context, should_compress
 from app.utils.logger import logger
 
 
@@ -28,6 +29,8 @@ class GameState(TypedDict):
     validation_ok: bool
     validation_issues: list
     events: Annotated[list, operator.add]
+    human_review: bool
+    _paused: bool
 
 
 MAX_RETRY = 1
@@ -38,6 +41,17 @@ retriever = RetrieverAgent()
 tool_agent = ToolAgent()
 validator = ValidatorAgent()
 summarizer = SummarizerAgent()
+
+# Human review signal store
+_resume_events: dict[str, asyncio.Future[dict]] = {}
+
+
+def signal_resume(request_id: str, action: str, feedback: str = ""):
+    future = _resume_events.get(request_id)
+    if future and not future.done():
+        future.set_result({"action": action, "feedback": feedback})
+        return True
+    return False
 
 
 def _ev(agent: str, status: str, content: str, detail: dict | None = None) -> dict:
@@ -191,17 +205,44 @@ async def run(question: str, session_id: str = "", request_id: str = "") -> str:
     return last
 
 
-async def run_stream(question: str, session_id: str = "", request_id: str = ""):
-    quality_tracker.begin(question, "game", request_id=request_id)
-    history = short_memory.get_history(session_id)
-    memories = long_memory.retrieve(question)
-    context_ctx = _build_context(history, memories)
+def _default_state(question: str, session_id: str, request_id: str, human_review: bool) -> dict:
+    return {
+        "question": question, "session_id": session_id, "request_id": request_id,
+        "sub_queries": [], "retrieved": [], "tool_results": [], "context_ctx": "",
+        "draft": "", "feedback": "", "attempt": 0, "validation_ok": True, "validation_issues": [],
+        "events": [], "human_review": human_review, "_paused": False,
+    }
 
-    initial = GameState(
-        question=question, session_id=session_id, request_id=request_id,
-        sub_queries=[], retrieved=[], tool_results=[], context_ctx=context_ctx,
-        draft="", feedback="", attempt=0, validation_ok=True, validation_issues=[], events=[],
-    )
+
+async def run_stream(question: str, session_id: str = "", request_id: str = "", human_review: bool = False):
+    quality_tracker.begin(question, "game", request_id=request_id)
+
+    # Try to resume from checkpoint
+    restored = load_checkpoint(session_id) if session_id else None
+    if restored and restored.get("question") == question:
+        logger.info(f"Resumed from checkpoint: session={session_id}")
+        history = short_memory.get_history(session_id)
+        memories = long_memory.retrieve(question)
+        context_ctx = restored.get("context_ctx", "")
+        # Re-compress if needed
+        if should_compress(context_ctx):
+            context_ctx = await compress_context(context_ctx, history[-4:] if history else [])
+        restored["context_ctx"] = context_ctx
+        initial = GameState(**{k: restored.get(k, v) for k, v in _default_state(question, session_id, request_id, human_review).items()})
+    else:
+        if restored:
+            logger.info(f"Question mismatch, starting fresh: got '{question}', expected '{restored.get('question')}'")
+        history = short_memory.get_history(session_id)
+        memories = long_memory.retrieve(question)
+        context_ctx = _build_context(history, memories)
+        if should_compress(context_ctx):
+            context_ctx = await compress_context(context_ctx, history[-4:] if history else [])
+        initial = GameState(
+            question=question, session_id=session_id, request_id=request_id,
+            sub_queries=[], retrieved=[], tool_results=[], context_ctx=context_ctx,
+            draft="", feedback="", attempt=0, validation_ok=True, validation_issues=[],
+            events=[], human_review=human_review, _paused=False,
+        )
 
     if memories:
         yield {"event": "step", "agent": "memory", "status": "done",
@@ -209,30 +250,141 @@ async def run_stream(question: str, session_id: str = "", request_id: str = ""):
                "detail": {"short_turns": len(history) // 2, "long_memories": memories}}
 
     try:
-        final = await compiled.ainvoke(initial)
-        answer = final.get("draft", "")
-        seen = set()
-
-        for ev in final.get("events", []):
-            key = (ev["agent"], ev["status"], ev["content"][:30])
-            if key not in seen:
-                seen.add(key)
-                yield ev
-
-        short_memory.add_turn(session_id, question, answer)
-        if session_id:
-            asyncio.create_task(long_memory.process_turn(session_id, question, answer))
-        quality_tracker.finish(answer, final.get("attempt", 1))
-
-        for chunk in _chunk(answer):
-            yield {"event": "token", "content": chunk}
-        yield {"event": "done", "content": answer}
+        if human_review:
+            async for final in _run_with_review(initial):
+                yield final
+                if final.get("event") == "_final":
+                    final_state = final.get("_state", {})
+                    break
+        else:
+            # Save pre-execution checkpoint for crash recovery
+            save_checkpoint(initial)
+            final_state = await compiled.ainvoke(initial)
+            answer = final_state.get("draft", "")
+            seen = set()
+            for ev in final_state.get("events", []):
+                key = (ev["agent"], ev["status"], ev["content"][:30])
+                if key not in seen:
+                    seen.add(key)
+                    yield ev
+            _finish(final_state, question, session_id, answer)
+            delete_checkpoint(session_id)
+            for chunk in _chunk(answer):
+                yield {"event": "token", "content": chunk}
+            yield {"event": "done", "content": answer}
 
     except Exception as e:
         logger.error(f"[Graph] 异常: {e}", extra={"request_id": request_id})
         quality_tracker.finish("", 0)
         yield {"event": "error", "content": f"处理失败: {e}"}
         yield {"event": "done", "content": f"处理失败: {e}"}
+
+
+async def _run_with_review(initial: GameState):
+    """Step-by-step execution with human review at key nodes."""
+    request_id = initial["request_id"]
+    session_id = initial.get("session_id", "")
+    phase = 0
+    save_checkpoint({**initial, "_phase": 0})
+    pause_nodes = ["planner", "retriever_tool", "summarizer", "validator"]
+    final_state = None
+
+    async for step in compiled.astream(initial, stream_mode="updates"):
+        for node_name, node_output in step.items():
+            if node_name == "__end__":
+                continue
+
+            # Forward events
+            for ev in node_output.get("events", []):
+                yield ev
+
+            # Prepare pause data
+            pause_data = {k: v for k, v in node_output.items() if k != "events"}
+
+            # --- Determine pause point ---
+            if node_name == "planner":
+                yield {"event": "pause", "agent": "planner",
+                       "title": "规划完成",
+                       "data": {"sub_queries": node_output.get("sub_queries", [])}}
+                if final_state:
+                    save_checkpoint({**final_state, **node_output, "_phase": 1})
+                result = await _wait_resume(request_id)
+                if result.get("action") == "modify":
+                    node_output["sub_queries"] = [result.get("feedback", node_output.get("sub_queries", [""])[0])]
+
+            elif node_name in ("retriever", "tool"):
+                # Wait for BOTH parallel nodes before pausing
+                pass  # pause will happen when tool fires (second parallel node)
+
+            elif node_name == "tool":
+                yield {"event": "pause", "agent": "retriever_tool",
+                       "title": "检索完成",
+                       "data": {
+                           "retrieved": initial.get("retrieved", []) + node_output.get("retrieved", []),
+                           "tool_results": node_output.get("tool_results", []),
+                       }}
+                if final_state:
+                    save_checkpoint({**final_state, **node_output, "_phase": 2})
+                await _wait_resume(request_id)
+
+            elif node_name == "summarizer":
+                yield {"event": "pause", "agent": "summarizer",
+                       "title": "草稿完成",
+                       "data": {"draft": node_output.get("draft", "")[:500]}}
+                if final_state:
+                    save_checkpoint({**final_state, **node_output, "_phase": 3})
+                result = await _wait_resume(request_id)
+                if result.get("action") == "modify":
+                    node_output["feedback"] = result.get("feedback", "")
+                    # Force rewrite by setting validation_ok=False
+                    node_output["validation_ok"] = False
+                    node_output["validation_issues"] = [result["feedback"]]
+
+            elif node_name == "validator":
+                ok = node_output.get("validation_ok", True)
+                issues = node_output.get("validation_issues", [])
+                if not ok:
+                    yield {"event": "pause", "agent": "validator",
+                           "title": "校验发现异常",
+                           "data": {"issues": issues, "draft": node_output.get("draft", initial.get("draft", ""))[:500]}}
+                    result = await _wait_resume(request_id)
+                    if result.get("action") == "override":
+                        node_output["validation_ok"] = True
+                        node_output["feedback"] = ""
+                    elif result.get("action") == "modify":
+                        node_output["feedback"] = result.get("feedback", "")
+                        # Let the rewrite loop handle it
+
+            # Accumulate state manually
+            if final_state is None:
+                final_state = dict(initial)
+            final_state.update(node_output)
+
+    # After stream ends, final_state has all accumulated data
+    if final_state and "draft" in final_state:
+        answer = final_state.get("draft", "")
+        _finish(final_state, initial["question"], initial["session_id"], answer)
+        delete_checkpoint(session_id)
+        for chunk in _chunk(answer):
+            yield {"event": "token", "content": chunk}
+        yield {"event": "done", "content": answer}
+
+    yield {"event": "_final", "_state": final_state or initial}
+
+
+async def _wait_resume(request_id: str) -> dict:
+    future = _resume_events.setdefault(request_id, asyncio.Future())
+    try:
+        return await asyncio.wait_for(future, timeout=600)
+    except asyncio.TimeoutError:
+        return {"action": "continue", "feedback": ""}
+
+
+def _finish(final_state: dict, question: str, session_id: str, answer: str):
+    short_memory.add_turn(session_id, question, answer)
+    if session_id:
+        asyncio.create_task(long_memory.process_turn(session_id, question, answer))
+    quality_tracker.finish(answer, final_state.get("attempt", 1))
 
 
 def _chunk(text: str, size: int = 8):

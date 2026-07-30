@@ -62,7 +62,7 @@ async def _tool_game_search(query: str = ""):
 
 mcp_registry.register(
     name="game_search",
-    description="搜索游戏数据（Steam API + 专业游戏网站）。传入游戏名称，返回价格、评分、平台、简介等信息。",
+    description="搜索游戏数据（TapTap）。传入游戏名称，返回价格、评分、标签、开发商、简介等信息。",
     handler=_tool_game_search,
     parameters={"type": "object", "properties": {"query": {"type": "string", "description": "游戏名称或关键词，如「黑神话悟空」「艾尔登法环」"}}, "required": ["query"]},
 )

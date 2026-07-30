@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Message, Session } from '../types';
-import { streamChat, clearSession as apiClearSession } from '../api/client';
+import { streamChat, flowChat, clearSession as apiClearSession } from '../api/client';
 
 export function useChat(userId: string | null) {
   const [sessions, setSessions] = useState<Record<string, Session>>({
@@ -8,11 +8,14 @@ export function useChat(userId: string | null) {
   });
   const [currentSid, setCurrentSid] = useState('default');
   const [streaming, setStreaming] = useState(false);
+  const [flowMode, setFlowMode] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [pauseInfo, setPauseInfo] = useState<{ requestId: string; agent: string; output: string; feedback: string } | null>(null);
   const aborterRef = useRef<AbortController | null>(null);
 
   const currentMessages = sessions[currentSid]?.messages ?? [];
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, humanReview = false) => {
     const sid = currentSid;
     const userMsg: Message = { role: 'user', content: text };
     setSessions(prev => ({
@@ -21,6 +24,7 @@ export function useChat(userId: string | null) {
     }));
 
     setStreaming(true);
+    setFlowMode(humanReview);
     const assistantMsg: Message = { role: 'assistant', content: '' };
     setSessions(prev => ({
       ...prev,
@@ -28,7 +32,7 @@ export function useChat(userId: string | null) {
     }));
 
     try {
-      const resp = await streamChat(text, userId, sid);
+      const resp = humanReview ? await flowChat(text, userId, sid, true) : await streamChat(text, userId, sid);
       if (!resp.ok || !resp.body) {
         setSessions(prev => {
           const msgs = [...prev[sid].messages];
@@ -57,7 +61,53 @@ export function useChat(userId: string | null) {
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
-              if (parsed.token) {
+              if (parsed.event) {
+                // Flow mode events
+                const event = parsed.event;
+                if (event === 'step') {
+                  setSessions(prev => {
+                    const msgs = [...prev[sid].messages];
+                    const statusLine = `[${parsed.agent}] ${parsed.status}`;
+                    const last = msgs[msgs.length - 1];
+                    if (!last || last.role !== 'assistant') return prev;
+                    const lines = last.content.split('\n');
+                    if (lines[0].startsWith('[') && lines[0].includes(']')) {
+                      lines[0] = statusLine;
+                    } else {
+                      lines.unshift(statusLine);
+                    }
+                    msgs[msgs.length - 1] = { ...last, content: lines.join('\n') };
+                    return { ...prev, [sid]: { ...prev[sid], messages: msgs } };
+                  });
+                  window.dispatchEvent(new CustomEvent('agent-step', { detail: parsed }));
+                } else if (event === 'token') {
+                  fullText += parsed.token;
+                  setSessions(prev => {
+                    const msgs = [...prev[sid].messages];
+                    msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullText };
+                    return { ...prev, [sid]: { ...prev[sid], messages: msgs } };
+                  });
+                } else if (event === 'pause') {
+                  setPaused(true);
+                  setPauseInfo({
+                    requestId: parsed.request_id,
+                    agent: parsed.agent,
+                    output: parsed.output || '',
+                    feedback: '',
+                  });
+                } else if (event === 'done') {
+                  setPaused(false);
+                  setPauseInfo(null);
+                } else if (event === 'error') {
+                  fullText += `\n[错误] ${parsed.error || '未知错误'}`;
+                  setSessions(prev => {
+                    const msgs = [...prev[sid].messages];
+                    msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullText };
+                    return { ...prev, [sid]: { ...prev[sid], messages: msgs } };
+                  });
+                }
+              } else if (parsed.token) {
+                // Simple stream mode
                 fullText += parsed.token;
                 setSessions(prev => {
                   const msgs = [...prev[sid].messages];
@@ -79,7 +129,22 @@ export function useChat(userId: string | null) {
       }
     }
     setStreaming(false);
+    setFlowMode(false);
+    setPaused(false);
+    setPauseInfo(null);
   }, [currentSid, userId]);
+
+  const resumeWithAction = useCallback(async (action: string, feedback = '') => {
+    if (!pauseInfo) return;
+    try {
+      const { resumeChat } = await import('../api/client');
+      await resumeChat(pauseInfo.requestId, action, feedback);
+      setPaused(false);
+      setPauseInfo(null);
+    } catch {
+      // ignore
+    }
+  }, [pauseInfo]);
 
   const newSession = useCallback(() => {
     const sid = 'session_' + Date.now();
@@ -110,7 +175,8 @@ export function useChat(userId: string | null) {
   }, [currentSid, sessions]);
 
   return {
-    sessions, currentSid, currentMessages, streaming,
-    sendMessage, newSession, switchSession, clearCurrentSession, deleteSession,
+    sessions, currentSid, currentMessages, streaming, flowMode, paused, pauseInfo,
+    sendMessage, resumeWithAction,
+    newSession, switchSession, clearCurrentSession, deleteSession,
   };
 }
