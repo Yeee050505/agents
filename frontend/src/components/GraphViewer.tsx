@@ -251,13 +251,30 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const ex = to.x - w / 2;
   const ey = to.y;
 
-  // Branch / merge: orthogonal Z 形折线
-  if (style === 'branch' || style === 'merge') {
-    const mid = style === 'branch' ? 120 : 315;
+  // Branch: planner → retriever / tool — 至虚线框左缘分叉
+  if (style === 'branch') {
+    const bx = 127;
+    if (toId === 'retriever') {
+      const pts = [
+        { x: sx, y: sy }, { x: bx, y: sy }, { x: bx, y: 53 }, { x: ex, y: 53 },
+      ];
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: bx, ly: sy - 8 };
+    }
+    // tool: 框左缘分叉至下路
     const pts = [
-      { x: sx, y: sy }, { x: mid, y: sy }, { x: mid, y: ey }, { x: ex, y: ey },
+      { x: sx, y: sy }, { x: bx, y: sy }, { x: bx, y: 77 }, { x: ex, y: 77 },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: mid + 10, ly: sy - 8 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: bx, ly: sy + 40 };
+  }
+
+  // Merge: retriever / tool → summarizer — 虚线框右缘汇合
+  if (style === 'merge') {
+    const cx = 293;
+    // retriever 出口
+    const pts = [
+      { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ey }, { x: ex, y: ey },
+    ];
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy - 8 };
   }
 
   // Default: orthogonal L-shape with rounded corner
