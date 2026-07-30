@@ -29,8 +29,8 @@ function calcPositions(graph: WorkflowGraph) {
   graph.nodes.forEach(n => {
     const layer = LAYER[n.id] ?? 99;
     const x = cx(layer);
-    if (n.id === 'retriever') pos[n.id] = { x: x - 35, y: yMap[n.id] || 50 };
-    else if (n.id === 'tool') pos[n.id] = { x: x + 35, y: yMap[n.id] || 50 };
+    if (n.id === 'retriever') pos[n.id] = { x: x - 50, y: yMap[n.id] || 50 };
+    else if (n.id === 'tool') pos[n.id] = { x: x + 50, y: yMap[n.id] || 50 };
     else pos[n.id] = { x, y: yMap[n.id] || 50 };
   });
   pos.__end__ = { x: cx(4), y: yMap.__end__ || 50 };
@@ -136,7 +136,7 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
 }) {
   const [zoom, setZoom] = useState(1.5);
-  const [nodeOpacity, setNodeOpacity] = useState(100);
+  const [uiOpacity, setUiOpacity] = useState(100);
   const nodePositions = calcPositions(graph);
 
   useEffect(() => {
@@ -146,7 +146,7 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" style={{ opacity: uiOpacity / 100 }} onClick={onClose}>
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-700 shadow-2xl w-[95vw] h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3 shrink-0">
@@ -163,11 +163,11 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
             <span className="font-mono w-6 text-right">{zoom.toFixed(1)}x</span>
           </div>
           <div className="flex items-center gap-2">
-            <span>透明度</span>
-            <input type="range" min={10} max={100} value={nodeOpacity}
-              onChange={e => setNodeOpacity(parseInt(e.target.value))}
+            <span>面板透明度</span>
+            <input type="range" min={10} max={100} value={uiOpacity}
+              onChange={e => setUiOpacity(parseInt(e.target.value))}
               className="w-20 accent-blue-500 h-1 cursor-pointer" />
-            <span className="font-mono w-6 text-right">{nodeOpacity}%</span>
+            <span className="font-mono w-6 text-right">{uiOpacity}%</span>
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-auto flex items-start justify-center">
@@ -182,7 +182,7 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
                   <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
                 </marker>
               </defs>
-              {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, nodeOpacity / 100)}
+              {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, 1)}
             </svg>
           </div>
         </div>
@@ -199,20 +199,36 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
 }
 
 function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, fromId: string, toId: string, w: number, h: number) {
-  const isLoop = fromId === 'validator' && toId === 'summarizer';
-  if (isLoop) {
+  // Loop: validator → summarizer (condition rewrite)
+  if (fromId === 'validator' && toId === 'summarizer') {
     const sx = from.x;
     const sy = from.y - h / 2;
     const ex = to.x + w / 2;
     const ey = to.y - h / 2;
-    const my = Math.min(sy, ey) - 24;
-    return { d: `M ${sx},${sy} C ${sx},${my} ${ex},${my} ${ex},${ey}`, marker: 'url(#arrowYellow)', color: '#FBBF24', dashed: true };
+    const my = Math.min(sy, ey) - 20;
+    return { d: `M ${sx},${sy} C ${sx},${my} ${ex + 20},${ey} ${ex},${ey}`, marker: 'url(#arrowYellow)', color: '#FBBF24', dashed: true, lx: (sx + ex) / 2, ly: my - 6 };
   }
+
   const sx = from.x + w / 2;
   const sy = from.y;
   const ex = to.x - w / 2;
   const ey = to.y;
-  return { d: `M ${sx},${sy} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false };
+
+  // Fan-out: planner → retriever / tool
+  if (fromId === 'planner' && (toId === 'retriever' || toId === 'tool')) {
+    const bx = 120;
+    return { d: `M ${sx},${sy} L ${bx},${sy} L ${bx},${ey} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: bx + 10, ly: sy - 8 };
+  }
+
+  // Fan-in: retriever / tool → summarizer
+  if ((fromId === 'retriever' || fromId === 'tool') && toId === 'summarizer') {
+    const cx = 315;
+    return { d: `M ${sx},${sy} L ${cx},${sy} L ${cx},${ey} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: (sx + ex) / 2, ly: sy - 8 };
+  }
+
+  // Default: orthogonal L-shape
+  const mx = (sx + ex) / 2;
+  return { d: `M ${sx},${sy} L ${mx},${sy} L ${mx},${ey} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: mx, ly: sy - 8 };
 }
 
 function svgGraph(
@@ -238,14 +254,12 @@ function svgGraph(
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
         const ep = edgePath(from, to, e.from, e.to, nodeW, nodeH);
-        const midX = (from.x + to.x) / 2;
-        const midY = Math.min(from.y, to.y) - 12;
         return (
           <g key={i}>
             <path d={ep.d} fill="none" stroke={ep.color} strokeWidth={edgeW}
               strokeDasharray={ep.dashed ? '4,3' : 'none'}
               markerEnd={ep.marker} />
-            {e.label && <text x={midX} y={midY} textAnchor="middle" fill="#9CA3AF" fontSize={labelSize}>{e.label}</text>}
+            {e.label && <text x={ep.lx} y={ep.ly} textAnchor="middle" fill="#9CA3AF" fontSize={labelSize}>{e.label}</text>}
           </g>
         );
       })}
