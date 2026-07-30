@@ -1,0 +1,2 @@
+{"timestamp": 1785424817.4650483, "query": "帮我写一段游戏推荐文案", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
+{"timestamp": 1785424844.0123956, "query": "帮我写一段游戏推荐文案", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}

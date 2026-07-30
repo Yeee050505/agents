@@ -89,12 +89,12 @@ export default function GraphViewer({ sessionId }: Props) {
 
   graph.nodes.forEach(n => {
     const layer = LAYER[n.id] ?? 99;
-    nodePositions[n.id] = { x: 50 + layer * 130, y: 70 + (n.id === 'retriever_tool' ? 60 : 0) };
+    nodePositions[n.id] = { x: 50 + layer * 140, y: 50 + (n.id === 'retriever_tool' ? 70 : 0) };
   });
-  nodePositions.__end__ = { x: 50 + 4 * 130, y: 70 };
+  nodePositions.__end__ = { x: 50 + 4 * 140, y: 50 };
 
   return (
-    <svg viewBox="0 0 600 200" className="w-full h-auto">
+    <svg viewBox="0 0 640 220" className="w-full h-auto max-h-56">
       {graph.edges.map((e, i) => {
         const from = nodePositions[e.from] || { x: 0, y: 0 };
         const to = nodePositions[e.to] || { x: 0, y: 0 };
