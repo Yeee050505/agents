@@ -110,7 +110,7 @@ export default function GraphViewer({ sessionId }: Props) {
     <>
       <svg viewBox="38 8 660 155" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
         onClick={() => setShowModal(true)}>
-        {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1)}
+        {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, 1)}
       </svg>
 
       {showModal && (
@@ -128,6 +128,7 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
 }) {
   const [zoom, setZoom] = useState(1.5);
+  const [nodeOpacity, setNodeOpacity] = useState(100);
   const nodePositions = calcPositions(graph);
 
   useEffect(() => {
@@ -144,14 +145,22 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
           <h3 className="text-base font-semibold text-gray-200">Agent 流程图</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
         </div>
-        {/* Zoom slider */}
-        <div className="flex items-center gap-3 mb-3 shrink-0">
-          <span className="text-[10px] text-gray-500 w-6 text-right">1x</span>
-          <input type="range" min={1} max={4} step={0.1} value={zoom}
-            onChange={e => setZoom(parseFloat(e.target.value))}
-            className="flex-1 accent-blue-500 h-1 cursor-pointer" />
-          <span className="text-[10px] text-gray-500 w-6">4x</span>
-          <span className="text-xs text-gray-400 font-mono w-8 text-right">{zoom.toFixed(1)}x</span>
+        {/* Controls */}
+        <div className="flex items-center gap-6 mb-3 shrink-0 text-[10px] text-gray-500">
+          <div className="flex items-center gap-2">
+            <span>缩放</span>
+            <input type="range" min={1} max={4} step={0.1} value={zoom}
+              onChange={e => setZoom(parseFloat(e.target.value))}
+              className="w-20 accent-blue-500 h-1 cursor-pointer" />
+            <span className="font-mono w-6 text-right">{zoom.toFixed(1)}x</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span>透明度</span>
+            <input type="range" min={10} max={100} value={nodeOpacity}
+              onChange={e => setNodeOpacity(parseInt(e.target.value))}
+              className="w-20 accent-blue-500 h-1 cursor-pointer" />
+            <span className="font-mono w-6 text-right">{nodeOpacity}%</span>
+          </div>
         </div>
         <div className="flex-1 min-h-0 overflow-auto flex items-start justify-center">
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="shrink-0">
@@ -165,7 +174,7 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
                   <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
                 </marker>
               </defs>
-              {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1)}
+              {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, nodeOpacity / 100)}
             </svg>
           </div>
         </div>
@@ -189,6 +198,7 @@ function svgGraph(
   hasSnapshot: (id: string) => boolean,
   handleDotClick: (p: number) => void,
   scale: number,
+  opacity = 1,
 ) {
   const nodeW = 50 * scale;
   const nodeH = 24 * scale;
@@ -233,7 +243,8 @@ function svgGraph(
               </circle>
             )}
             <rect x={pos.x} y={pos.y - nodeH / 2} width={nodeW} height={nodeH} rx={8}
-              fill={color + '30'} stroke={isHighlighted ? '#60A5FA' : color}
+              fill={color + Math.round(opacity * 48).toString(16).padStart(2, '0')}
+              stroke={isHighlighted ? '#60A5FA' : color}
               strokeWidth={isHighlighted ? 3 : (status === 'running' ? 2.5 : 1.5)} />
             <text x={pos.x + nodeW / 2} y={pos.y + fontSize / 3} textAnchor="middle" fill="#E5E7EB" fontSize={fontSize} fontWeight={500}>
               {n.label}

@@ -3,3 +3,6 @@
 {"timestamp": 1785426062.4874218, "query": "这个平台能做什么", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
 {"timestamp": 1785426091.3481956, "query": "这个平台能做什么", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
 {"timestamp": 1785426712.9991674, "query": "这个平台能做什么", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
+{"timestamp": 1785427063.6888268, "query": "这个平台能做什么", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
+{"timestamp": 1785427100.0337152, "query": "这个平台能做什么", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
+{"timestamp": 1785427167.33687, "query": "你还能做什么", "bm25_hits": 1, "tool_hits": 0, "common_phrases": 0, "bm25_only_phrases": 1, "tool_only_phrases": 0, "flags": ["bm25_only"], "confidence": "low"}
