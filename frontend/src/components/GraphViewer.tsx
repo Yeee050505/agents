@@ -271,17 +271,17 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   if (style === 'merge') {
     const cx = 293;
     if (fromId === 'retriever') {
-      // 检索线从上方 y=40 绕行，避开工具模块
+      // 检索线从上方 y=25 绕行，避开工具模块，与扇出线平齐
       const pts = [
-        { x: sx, y: sy }, { x: sx, y: 40 }, { x: cx, y: 40 }, { x: cx, y: ey }, { x: ex, y: ey },
+        { x: sx, y: sy }, { x: sx, y: 25 }, { x: cx, y: 25 }, { x: cx, y: ey }, { x: ex, y: ey },
       ];
-      return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx + 10, ly: 36 };
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: 21 };
     }
     // 工具线水平直连汇合点
     const pts = [
       { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: 56 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy - 8 };
   }
 
   // Default: orthogonal L-shape with rounded corner
