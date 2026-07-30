@@ -23,15 +23,12 @@ interface Props {
 function calcPositions(graph: WorkflowGraph) {
   const cx = (layer: number) => 50 + layer * 160;
   const yMap: Record<string, number> = {
-    planner: 30, retriever: 65, tool: 65, summarizer: 100, validator: 135, __end__: 135,
+    planner: 25, retriever: 50, tool: 80, summarizer: 110, validator: 145, __end__: 145,
   };
   const pos: Record<string, { x: number; y: number }> = {};
   graph.nodes.forEach(n => {
     const layer = LAYER[n.id] ?? 99;
-    const x = cx(layer);
-    if (n.id === 'retriever') pos[n.id] = { x: x - 50, y: yMap[n.id] || 50 };
-    else if (n.id === 'tool') pos[n.id] = { x: x + 50, y: yMap[n.id] || 50 };
-    else pos[n.id] = { x, y: yMap[n.id] || 50 };
+    pos[n.id] = { x: cx(layer), y: yMap[n.id] || 50 };
   });
   pos.__end__ = { x: cx(4), y: yMap.__end__ || 50 };
   return pos;
@@ -116,7 +113,7 @@ export default function GraphViewer({ sessionId }: Props) {
 
   return (
     <>
-      <svg viewBox="15 10 710 180" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
+      <svg viewBox="15 10 710 200" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
         onClick={() => setShowModal(true)}>
         {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, 1)}
       </svg>
@@ -214,55 +211,52 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const color = EDGE_COLORS[style || 'default'] || EDGE_COLORS.default;
   const marker = isLoop ? 'url(#arrowYellow)' : 'url(#arrowGray)';
 
-  // Loop: validator → summarizer — 标准矩形闭环（竖边对齐汇聚节点 x=305 与校验 x=530）
-  if (isLoop) {
-    const sx = from.x;
-    const sy = from.y + h / 2;
-    const ex = to.x - w / 2;
-    const ey = to.y;
-    const by = sy + 35;
-    const leftX = 305;
-    const pts = [
-      { x: sx, y: sy }, { x: sx, y: by }, { x: leftX, y: by }, { x: leftX, y: ey }, { x: ex, y: ey },
-    ];
-    return { d: roundPath(pts, R), marker, color, dashed: true, lx: (sx + leftX) / 2, ly: by + 10 };
-  }
-
   const sx = from.x + w / 2;
   const sy = from.y;
   const ex = to.x - w / 2;
   const ey = to.y;
 
-  // Branch: 规划垂直下至 y=60 分叉，两条独立水平线分别接入检索/工具左侧中点
+  // Branch: 单根绿箭头从规划→框左缘(127,25)分叉，竖向下分别连检索/工具
   if (style === 'branch') {
+    const bx = 127;
     if (toId === 'retriever') {
       const pts = [
-        { x: sx, y: sy }, { x: sx, y: 60 }, { x: ex, y: 60 },
+        { x: sx, y: sy }, { x: bx, y: sy }, { x: bx, y: ey }, { x: ex, y: ey },
       ];
-      return { d: roundPath(pts, R), marker, color, dashed: false, lx: sx - 6, ly: sy - 6 };
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: bx - 6, ly: sy - 6 };
     }
-    // tool: 在 y=60 继续下至 y=70，再水平接入工具
+    // tool分支：共享入口段，无独立箭头
     const pts = [
-      { x: sx, y: sy }, { x: sx, y: 70 }, { x: ex, y: 70 },
+      { x: sx, y: sy }, { x: bx, y: sy }, { x: bx, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: sx - 6, ly: sy - 6 };
+    return { d: roundPath(pts, R), marker: '', color, dashed: false, lx: bx - 6, ly: sy - 6, hideLabel: true };
   }
 
-  // Merge: 检索右端下绕至 y=80，工具右端水平至 x=305 汇合
+  // Merge: 检索/工具同时右出至汇聚点(205)下至摘要
   if (style === 'merge') {
-    const cx = 305;
+    const cx = 205;
     if (fromId === 'retriever') {
-      // 检索下绕至框底部 y=80，水平到汇合点，不下穿工具
       const pts = [
-        { x: sx, y: sy }, { x: sx, y: 80 }, { x: cx, y: 80 }, { x: cx, y: ey }, { x: ex, y: ey },
+        { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ey }, { x: ex, y: ey },
       ];
-      return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: 56 };
+      return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy - 6 };
     }
-    // 工具水平直连汇合点
     const pts = [
       { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ey }, { x: ex, y: ey },
     ];
-    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy + 50 };
+    return { d: roundPath(pts, R), marker, color, dashed: false, lx: cx, ly: sy - 10, hideLabel: true };
+  }
+
+  // Loop: validator → summarizer — 标准矩形闭环（竖边对齐汇聚节点 x=205）
+  if (isLoop) {
+    const sy2 = from.y + h / 2;
+    const ey2 = to.y;
+    const by = sy2 + 35;
+    const leftX = 205;
+    const pts = [
+      { x: from.x, y: sy2 }, { x: from.x, y: by }, { x: leftX, y: by }, { x: leftX, y: ey2 }, { x: ex, y: ey2 },
+    ];
+    return { d: roundPath(pts, R), marker, color, dashed: true, lx: (from.x + leftX) / 2, ly: by + 10 };
   }
 
   // Default: orthogonal L-shape
@@ -299,7 +293,7 @@ function svgGraph(
       {retrieverPos && toolPos && (() => {
         const rx = retrieverPos.x - nodeW / 2 - 8;
         const ry = Math.min(retrieverPos.y, toolPos.y) - nodeH / 2 - 8;
-        const rw = (toolPos.x + nodeW / 2 + 20) - rx;
+        const rw = (retrieverPos.x + nodeW / 2 + 20) - rx;
         const rh = Math.max(retrieverPos.y, toolPos.y) + nodeH / 2 + 8 - ry;
         return (
           <g>
@@ -320,8 +314,8 @@ function svgGraph(
           <g key={i}>
             <path d={ep.d} fill="none" stroke={ep.color} strokeWidth={edgeW}
               strokeDasharray={ep.dashed ? '4,3' : 'none'}
-              markerEnd={ep.marker} />
-            {e.label && <text x={ep.lx} y={ep.ly} textAnchor="middle" fill={labelColor} fontSize={labelSize}>{e.label}</text>}
+              markerEnd={ep.marker || undefined} />
+            {e.label && !ep.hideLabel && <text x={ep.lx} y={ep.ly} textAnchor="middle" fill={labelColor} fontSize={labelSize}>{e.label}</text>}
           </g>
         );
       })}
