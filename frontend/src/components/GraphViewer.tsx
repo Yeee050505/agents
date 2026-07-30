@@ -116,7 +116,7 @@ export default function GraphViewer({ sessionId }: Props) {
 
   return (
     <>
-      <svg viewBox="15 10 710 155" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
+      <svg viewBox="15 10 710 180" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity bg-gray-750 border border-gray-700 rounded-lg p-1"
         onClick={() => setShowModal(true)}>
         {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1, 1)}
       </svg>
@@ -198,15 +198,44 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   );
 }
 
+function roundPath(pts: { x: number; y: number }[], r: number): string {
+  if (pts.length < 2) return '';
+  let d = `M ${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    const dxa = b.x - a.x, dya = b.y - a.y;
+    const dxc = c.x - b.x, dyc = c.y - b.y;
+    const la = Math.sqrt(dxa * dxa + dya * dya);
+    const lc = Math.sqrt(dxc * dxc + dyc * dyc);
+    const ri = Math.min(r, la / 2, lc / 2);
+    d += ` L ${b.x - (dxa / la) * ri},${b.y - (dya / la) * ri}`;
+    d += ` Q ${b.x},${b.y} ${b.x + (dxc / lc) * ri},${b.y + (dyc / lc) * ri}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L ${last.x},${last.y}`;
+  return d;
+}
+
 function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, fromId: string, toId: string, w: number, h: number) {
-  // Loop: validator → summarizer (condition rewrite)
+  const R = 6;
+
+  // Loop: validator → summarizer —绕下穿行，从左侧接入摘要左边缘（箭头朝右）
   if (fromId === 'validator' && toId === 'summarizer') {
     const sx = from.x;
-    const sy = from.y - h / 2;
-    const ex = to.x + w / 2;
-    const ey = to.y - h / 2;
-    const my = Math.min(sy, ey) - 20;
-    return { d: `M ${sx},${sy} C ${sx},${my} ${ex + 20},${ey} ${ex},${ey}`, marker: 'url(#arrowYellow)', color: '#FBBF24', dashed: true, lx: (sx + ex) / 2, ly: my - 6 };
+    const sy = from.y + h / 2;
+    const ex = to.x - w / 2;
+    const ey = to.y;
+    const by = sy + 35;
+    // 绕过 tool 右缘(285)，在 300 处上拐，从左侧向右接入摘要左边缘
+    const leftX = 300;
+    const pts = [
+      { x: sx, y: sy },
+      { x: sx, y: by },
+      { x: leftX, y: by },
+      { x: leftX, y: ey },
+      { x: ex, y: ey },
+    ];
+    return { d: roundPath(pts, R), marker: 'url(#arrowYellow)', color: '#FBBF24', dashed: true, lx: (sx + leftX) / 2, ly: by - 6 };
   }
 
   const sx = from.x + w / 2;
@@ -214,21 +243,39 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
   const ex = to.x - w / 2;
   const ey = to.y;
 
-  // Fan-out: planner → retriever / tool
+  // Fan-out: planner → retriever / tool (serial dispatch)
   if (fromId === 'planner' && (toId === 'retriever' || toId === 'tool')) {
     const bx = 120;
-    return { d: `M ${sx},${sy} L ${bx},${sy} L ${bx},${ey} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: bx + 10, ly: sy - 8 };
+    const pts = [
+      { x: sx, y: sy },
+      { x: bx, y: sy },
+      { x: bx, y: ey },
+      { x: ex, y: ey },
+    ];
+    return { d: roundPath(pts, R), marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: bx + 10, ly: sy - 8 };
   }
 
   // Fan-in: retriever / tool → summarizer
   if ((fromId === 'retriever' || fromId === 'tool') && toId === 'summarizer') {
     const cx = 315;
-    return { d: `M ${sx},${sy} L ${cx},${sy} L ${cx},${ey} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: (sx + ex) / 2, ly: sy - 8 };
+    const pts = [
+      { x: sx, y: sy },
+      { x: cx, y: sy },
+      { x: cx, y: ey },
+      { x: ex, y: ey },
+    ];
+    return { d: roundPath(pts, R), marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: (sx + ex) / 2, ly: sy - 8 };
   }
 
-  // Default: orthogonal L-shape
+  // Default: orthogonal L-shape with rounded corner
   const mx = (sx + ex) / 2;
-  return { d: `M ${sx},${sy} L ${mx},${sy} L ${mx},${ey} L ${ex},${ey}`, marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: mx, ly: sy - 8 };
+  const pts = [
+    { x: sx, y: sy },
+    { x: mx, y: sy },
+    { x: mx, y: ey },
+    { x: ex, y: ey },
+  ];
+  return { d: roundPath(pts, R), marker: 'url(#arrowGray)', color: '#6B7280', dashed: false, lx: mx, ly: sy - 8 };
 }
 
 function svgGraph(
