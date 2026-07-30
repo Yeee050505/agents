@@ -127,12 +127,8 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
   graph: WorkflowGraph; nodeStatus: Record<string, NodeStatus>; highlightNode: string;
   hasSnapshot: (id: string) => boolean; handleDotClick: (p: number) => void; onClose: () => void;
 }) {
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(1.5);
   const nodePositions = calcPositions(graph);
-  const scaledPos: Record<string, { x: number; y: number }> = {};
-  for (const [k, v] of Object.entries(nodePositions)) {
-    scaledPos[k] = { x: v.x * zoom, y: v.y * zoom };
-  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -157,20 +153,21 @@ function GraphModal({ graph, nodeStatus, highlightNode, hasSnapshot, handleDotCl
           <span className="text-[10px] text-gray-500 w-6">4x</span>
           <span className="text-xs text-gray-400 font-mono w-8 text-right">{zoom.toFixed(1)}x</span>
         </div>
-        <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto">
-          <svg viewBox={`0 0 ${720 * zoom} ${240 * zoom}`}
-            className="max-w-full max-h-full shrink-0"
-            preserveAspectRatio="xMidYMid meet">
-            <defs>
-              <marker id="arrowGray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L10,5 L0,10 Z" fill="#6B7280" />
-              </marker>
-              <marker id="arrowYellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
-              </marker>
-            </defs>
-            {svgGraph(graph, scaledPos, nodeStatus, highlightNode, hasSnapshot, handleDotClick, zoom)}
-          </svg>
+        <div className="flex-1 min-h-0 overflow-auto flex items-start justify-center">
+          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="shrink-0">
+            <svg viewBox="0 0 720 240" className="w-[720px] h-auto"
+              preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <marker id="arrowGray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#6B7280" />
+                </marker>
+                <marker id="arrowYellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#FBBF24" />
+                </marker>
+              </defs>
+              {svgGraph(graph, nodePositions, nodeStatus, highlightNode, hasSnapshot, handleDotClick, 1)}
+            </svg>
+          </div>
         </div>
         <div className="flex gap-5 mt-3 shrink-0 text-xs text-gray-500 justify-center">
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-500" /> 空闲</span>
